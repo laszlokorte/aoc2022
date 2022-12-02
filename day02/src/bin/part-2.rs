@@ -8,6 +8,6 @@ fn main() {
     if let Ok(content) = file {
         let result = process_goal(content);
 
-        println!("Score: {}", result);
+        println!("Score: {}", result.unwrap());
     }
 }

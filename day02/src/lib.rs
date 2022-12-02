@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 #[derive(Clone, Copy)]
 enum Move {
     Rock,
@@ -6,120 +8,129 @@ enum Move {
 }
 
 #[derive(Clone, Copy)]
-enum GameResult {
+enum Outcome {
     RightWin,
     LeftWin,
     Draw,
 }
 
 impl Move {
-    fn play(self, right: Self) -> GameResult {
+    fn play(self, right: Self) -> Outcome {
         match (self, right) {
-            (Move::Rock, Move::Rock) => GameResult::Draw,
-            (Move::Paper, Move::Paper) => GameResult::Draw,
-            (Move::Scisor, Move::Scisor) => GameResult::Draw,
-            (Move::Rock, Move::Scisor) => GameResult::LeftWin,
-            (Move::Paper, Move::Rock) => GameResult::LeftWin,
-            (Move::Scisor, Move::Paper) => GameResult::LeftWin,
-            (Move::Rock, Move::Paper) => GameResult::RightWin,
-            (Move::Paper, Move::Scisor) => GameResult::RightWin,
-            (Move::Scisor, Move::Rock) => GameResult::RightWin,
+            (Move::Rock, Move::Rock) => Outcome::Draw,
+            (Move::Paper, Move::Paper) => Outcome::Draw,
+            (Move::Scisor, Move::Scisor) => Outcome::Draw,
+            (Move::Rock, Move::Scisor) => Outcome::LeftWin,
+            (Move::Paper, Move::Rock) => Outcome::LeftWin,
+            (Move::Scisor, Move::Paper) => Outcome::LeftWin,
+            (Move::Rock, Move::Paper) => Outcome::RightWin,
+            (Move::Paper, Move::Scisor) => Outcome::RightWin,
+            (Move::Scisor, Move::Rock) => Outcome::RightWin,
         }
     }
 
-    fn play_for_goal(self, goal: GameResult) -> Self {
+    fn play_for_goal(self, goal: Outcome) -> Self {
         match (self, goal) {
-            (Move::Rock, GameResult::LeftWin) => Move::Scisor,
-            (Move::Paper, GameResult::LeftWin) => Move::Rock,
-            (Move::Scisor, GameResult::LeftWin) => Move::Paper,
-            (Move::Rock, GameResult::RightWin) => Move::Paper,
-            (Move::Paper, GameResult::RightWin) => Move::Scisor,
-            (Move::Scisor, GameResult::RightWin) => Move::Rock,
-            (Move::Rock, GameResult::Draw) => Move::Rock,
-            (Move::Paper, GameResult::Draw) => Move::Paper,
-            (Move::Scisor, GameResult::Draw) => Move::Scisor,
+            (Move::Rock, Outcome::LeftWin) => Move::Scisor,
+            (Move::Paper, Outcome::LeftWin) => Move::Rock,
+            (Move::Scisor, Outcome::LeftWin) => Move::Paper,
+            (Move::Rock, Outcome::RightWin) => Move::Paper,
+            (Move::Paper, Outcome::RightWin) => Move::Scisor,
+            (Move::Scisor, Outcome::RightWin) => Move::Rock,
+            (Move::Rock, Outcome::Draw) => Move::Rock,
+            (Move::Paper, Outcome::Draw) => Move::Paper,
+            (Move::Scisor, Outcome::Draw) => Move::Scisor,
         }
     }
 }
 
-pub fn process_move(text: String) -> u32 {
-    let lines = text.split("\n");
+impl FromStr for Move {
+    type Err = String;
 
-    return lines
-        .map(|line| {
-            let (left, right) = line.split_once(" ").unwrap();
-
-            let left_move = match left.chars().next() {
-                Some('A') => Move::Rock,
-                Some('B') => Move::Paper,
-                Some('C') => Move::Scisor,
-                _ => panic!("unknown move {}", left),
-            };
-
-            let right_move = match right.chars().next() {
-                Some('X') => Move::Rock,
-                Some('Y') => Move::Paper,
-                Some('Z') => Move::Scisor,
-                _ => panic!("unknown move {}", left),
-            };
-
-            let move_score = match right_move {
-                Move::Rock => 1,
-                Move::Paper => 2,
-                Move::Scisor => 3,
-            };
-
-            let result = left_move.play(right_move);
-
-            let game_score = match result {
-                GameResult::RightWin => 6,
-                GameResult::LeftWin => 0,
-                GameResult::Draw => 3,
-            };
-
-            return move_score + game_score;
-        })
-        .sum();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.chars().next() {
+            Some('A') => Ok(Move::Rock),
+            Some('B') => Ok(Move::Paper),
+            Some('C') => Ok(Move::Scisor),
+            Some('X') => Ok(Move::Rock),
+            Some('Y') => Ok(Move::Paper),
+            Some('Z') => Ok(Move::Scisor),
+            _ => Err("Unknown Move".to_string()),
+        }
+    }
 }
 
-pub fn process_goal(text: String) -> u32 {
+impl FromStr for Outcome {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.chars().next() {
+            Some('X') => Ok(Outcome::LeftWin),
+            Some('Y') => Ok(Outcome::Draw),
+            Some('Z') => Ok(Outcome::RightWin),
+            _ => Err("Unknown Outcome".to_string()),
+        }
+    }
+}
+
+fn score_move(m: Move) -> u32 {
+    match m {
+        Move::Rock => 1,
+        Move::Paper => 2,
+        Move::Scisor => 3,
+    }
+}
+
+fn score_outcome(o: Outcome) -> u32 {
+    match o {
+        Outcome::RightWin => 6,
+        Outcome::LeftWin => 0,
+        Outcome::Draw => 3,
+    }
+}
+
+pub fn process_move(text: String) -> Result<u32, String> {
     let lines = text.split("\n");
 
     return lines
         .map(|line| {
             let (left, right) = line.split_once(" ").unwrap();
 
-            let left_move = match left.chars().next() {
-                Some('A') => Move::Rock,
-                Some('B') => Move::Paper,
-                Some('C') => Move::Scisor,
-                _ => panic!("unknown move {}", left),
-            };
+            let left_move = Move::from_str(left);
+            let right_move = Move::from_str(right);
 
-            let right_goal = match right.chars().next() {
-                Some('X') => GameResult::LeftWin,
-                Some('Y') => GameResult::Draw,
-                Some('Z') => GameResult::RightWin,
-                _ => panic!("unknown move {}", left),
-            };
-
-            let right_move = left_move.play_for_goal(right_goal);
-
-            let move_score = match right_move {
-                Move::Rock => 1,
-                Move::Paper => 2,
-                Move::Scisor => 3,
-            };
-
-            let game_score = match right_goal {
-                GameResult::RightWin => 6,
-                GameResult::LeftWin => 0,
-                GameResult::Draw => 3,
-            };
-
-            return move_score + game_score;
+            match (left_move, right_move) {
+                (Ok(l), Ok(r)) => Ok(score_move(r) + score_outcome(l.play(r))),
+                (Err(e), _) => Err(e),
+                (_, Err(e)) => Err(e),
+            }
         })
-        .sum();
+        .fold(Ok(0), |acc, v| match (&acc, v) {
+            (Ok(a), Ok(n)) => Ok(a + n),
+            _ => acc,
+        });
+}
+
+pub fn process_goal(text: String) -> Result<u32, String> {
+    let lines = text.split("\n");
+
+    return lines
+        .map(|line| {
+            let (left, right) = line.split_once(" ").unwrap();
+
+            let left_move = Move::from_str(left);
+            let right_move = Outcome::from_str(right);
+
+            match (left_move, right_move) {
+                (Ok(l), Ok(r)) => Ok(score_outcome(r) + score_move(l.play_for_goal(r))),
+                (Err(e), _) => Err(e),
+                (_, Err(e)) => Err(e),
+            }
+        })
+        .fold(Ok(0), |acc, v| match (&acc, v) {
+            (Ok(a), Ok(n)) => Ok(a + n),
+            _ => acc,
+        });
 }
 
 #[cfg(test)]
@@ -133,7 +144,7 @@ mod tests {
         B X\n\
         C Z\
         ";
-        assert_eq!(process_move(MOVES.to_string()), 15);
+        assert_eq!(process_move(MOVES.to_string()), Ok(15));
     }
 
     #[test]
@@ -143,6 +154,6 @@ mod tests {
         B X\n\
         C Z\
         ";
-        assert_eq!(process_goal(MOVES.to_string()), 12);
+        assert_eq!(process_goal(MOVES.to_string()), Ok(12));
     }
 }
