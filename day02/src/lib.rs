@@ -89,48 +89,34 @@ fn score_outcome(o: Outcome) -> u32 {
     }
 }
 
-pub fn process_move(text: String) -> Result<u32, String> {
+pub fn process_move(text: String) -> Option<u32> {
     let lines = text.split('\n');
 
     lines
         .map(|line| {
-            let (left, right) = line.split_once(' ').unwrap();
+            let (left, right) = line.split_once(' ')?;
 
-            let left_move = Move::from_str(left);
-            let right_move = Move::from_str(right);
+            let left_move = Move::from_str(left).ok()?;
+            let right_move = Move::from_str(right).ok()?;
 
-            match (left_move, right_move) {
-                (Ok(l), Ok(r)) => Ok(score_move(r) + score_outcome(l.play(r))),
-                (Err(e), _) => Err(e),
-                (_, Err(e)) => Err(e),
-            }
+            Some(score_move(right_move) + score_outcome(left_move.play(right_move)))
         })
-        .fold(Ok(0), |acc, v| match (&acc, v) {
-            (Ok(a), Ok(n)) => Ok(a + n),
-            _ => acc,
-        })
+        .sum()
 }
 
-pub fn process_goal(text: String) -> Result<u32, String> {
+pub fn process_goal(text: String) -> Option<u32> {
     let lines = text.split('\n');
 
     lines
         .map(|line| {
-            let (left, right) = line.split_once(' ').unwrap();
+            let (left, right) = line.split_once(' ')?;
 
-            let left_move = Move::from_str(left);
-            let right_move = Outcome::from_str(right);
+            let left_move = Move::from_str(left).ok()?;
+            let right_move = Outcome::from_str(right).ok()?;
 
-            match (left_move, right_move) {
-                (Ok(l), Ok(r)) => Ok(score_outcome(r) + score_move(l.play_for_goal(r))),
-                (Err(e), _) => Err(e),
-                (_, Err(e)) => Err(e),
-            }
+            Some(score_outcome(right_move) + score_move(left_move.play_for_goal(right_move)))
         })
-        .fold(Ok(0), |acc, v| match (&acc, v) {
-            (Ok(a), Ok(n)) => Ok(a + n),
-            _ => acc,
-        })
+        .sum()
 }
 
 #[cfg(test)]
@@ -144,7 +130,7 @@ mod tests {
         B X\n\
         C Z\
         ";
-        assert_eq!(process_move(MOVES.to_string()), Ok(15));
+        assert_eq!(process_move(MOVES.to_string()), Some(15));
     }
 
     #[test]
@@ -154,6 +140,6 @@ mod tests {
         B X\n\
         C Z\
         ";
-        assert_eq!(process_goal(MOVES.to_string()), Ok(12));
+        assert_eq!(process_goal(MOVES.to_string()), Some(12));
     }
 }
