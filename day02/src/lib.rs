@@ -90,11 +90,11 @@ fn score_outcome(o: Outcome) -> u32 {
 }
 
 pub fn process_move(text: String) -> Result<u32, String> {
-    let lines = text.split("\n");
+    let lines = text.split('\n');
 
-    return lines
+    lines
         .map(|line| {
-            let (left, right) = line.split_once(" ").unwrap();
+            let (left, right) = line.split_once(' ').unwrap();
 
             let left_move = Move::from_str(left);
             let right_move = Move::from_str(right);
@@ -108,15 +108,15 @@ pub fn process_move(text: String) -> Result<u32, String> {
         .fold(Ok(0), |acc, v| match (&acc, v) {
             (Ok(a), Ok(n)) => Ok(a + n),
             _ => acc,
-        });
+        })
 }
 
 pub fn process_goal(text: String) -> Result<u32, String> {
-    let lines = text.split("\n");
+    let lines = text.split('\n');
 
-    return lines
+    lines
         .map(|line| {
-            let (left, right) = line.split_once(" ").unwrap();
+            let (left, right) = line.split_once(' ').unwrap();
 
             let left_move = Move::from_str(left);
             let right_move = Outcome::from_str(right);
@@ -130,7 +130,7 @@ pub fn process_goal(text: String) -> Result<u32, String> {
         .fold(Ok(0), |acc, v| match (&acc, v) {
             (Ok(a), Ok(n)) => Ok(a + n),
             _ => acc,
-        });
+        })
 }
 
 #[cfg(test)]

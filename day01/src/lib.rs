@@ -8,10 +8,10 @@ use std::{collections::BinaryHeap, num::ParseIntError};
 pub fn process(text: String, top_num: usize) -> Result<u32, ParseIntError> {
     let chunks = text.split("\n\n");
 
-    return chunks
+    chunks
         .map(|chunk| chunk.lines().map(str::parse::<u32>).sum())
         .collect::<Result<BinaryHeap<u32>, _>>()
-        .map(|h| h.into_iter_sorted().take(top_num).sum());
+        .map(|h| h.into_iter_sorted().take(top_num).sum())
 }
 
 #[cfg(test)]
