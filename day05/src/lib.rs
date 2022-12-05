@@ -18,11 +18,11 @@ fn setup_stacks(desc: &str) -> Option<(Vec<char>, Vec<Vec<char>>)> {
 
     for line in lines {
 
-        for c in 0..number_of_stacks {
+        for (c, stack) in stacks.iter_mut().enumerate().take(number_of_stacks) {
             let container_name = line.chars().nth(c*4+1);
             match container_name {
                 Some(' ') => {},
-                Some(name) => stacks[c].push(name),
+                Some(name) => stack.push(name),
                 None => {
                     println!("{:?}, {}", line.chars().count(), c);
                     return None;
@@ -35,7 +35,7 @@ fn setup_stacks(desc: &str) -> Option<(Vec<char>, Vec<Vec<char>>)> {
     Some((stack_names, stacks))
 }
 
-fn setup_commands(stack_names: &Vec<char>, desc: &str) -> Option<Vec<Movement>> {
+fn setup_commands(stack_names: &[char], desc: &str) -> Option<Vec<Movement>> {
     desc.lines().map(|line| {
         let parts = line.split_whitespace().array_chunks::<6>().next()?;
         let source_name = parts[3].chars().next()?;
@@ -51,7 +51,7 @@ fn setup_commands(stack_names: &Vec<char>, desc: &str) -> Option<Vec<Movement>> 
     }).collect()
 }
 
-fn apply_commands(stacks: &mut Vec<Vec<char>>, commands: Vec<Movement>) {
+fn apply_commands(stacks: &mut [Vec<char>], commands: Vec<Movement>) {
     for cmd in commands {    
         for _ in 0..cmd.count {
             let e = stacks[cmd.source].pop().unwrap();
@@ -60,7 +60,7 @@ fn apply_commands(stacks: &mut Vec<Vec<char>>, commands: Vec<Movement>) {
     }
 }
 
-fn apply_commands_multiple(stacks: &mut Vec<Vec<char>>, commands: Vec<Movement>) {
+fn apply_commands_multiple(stacks: &mut [Vec<char>], commands: Vec<Movement>) {
     let mut crane = Vec::new();
     for cmd in commands {
         for _ in 0..cmd.count {
