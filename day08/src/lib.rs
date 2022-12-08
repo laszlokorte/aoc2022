@@ -2,6 +2,13 @@
 #![feature(iter_intersperse)]
 use take_until::TakeUntilExt;
 
+fn walk_tree_cast<I:Iterator<Item=u32>+Clone>(height: u32, ray: I) -> (usize, bool)  {
+    (
+        ray.clone().take_until(|h| h >= &height).count(),
+        ray.skip_while(|h| h < &height).count() == 0
+    )
+}
+
 pub fn process(input: String) -> Option<(u32, usize)> {
     let grid = input.lines()
     .map(str::chars)
@@ -14,21 +21,18 @@ pub fn process(input: String) -> Option<(u32, usize)> {
     let mut highest_score = 0;
 
     for (r, row) in grid.iter().enumerate() {
-
         for (c, &own_height) in row.iter().enumerate() {
-            let visible_left = row[0..c].iter().rev().skip_while(|h| *h < &own_height).count() == 0;
-            let visible_right = row[(c+1)..width].iter().skip_while(|h| *h < &own_height).count() == 0;
-            let visible_top = grid[0..r].iter().rev().skip_while(|h| h[c] < own_height).count() == 0;
-            let visible_bottom = grid[(r+1)..height].iter().skip_while(|h| h[c] < own_height).count() == 0;
+            let rays = [
+                walk_tree_cast(own_height, row[0..c].iter().rev().cloned()),
+                walk_tree_cast(own_height, row[(c+1)..width].iter().cloned()),
+                walk_tree_cast(own_height, grid[0..r].iter().rev().map(|h| h[c])),
+                walk_tree_cast(own_height, grid[(r+1)..height].iter().map(|h| h[c])),
+            ];
 
-            let view_distance_left = row[0..c].iter().rev().take_until(|h| *h >= &own_height).count();
-            let view_distance_right = row[(c+1)..width].iter().take_until(|h| *h >= &own_height).count();
-            let view_distance_top = grid[0..r].iter().rev().take_until(|h| h[c] >= own_height).count();
-            let view_distance_bottom = grid[(r+1)..height].iter().take_until(|h| h[c] >= own_height).count();
+            let is_visible = rays.iter().any(|r| r.1);
+            let scenic_score = rays.iter().map(|r| r.0).product();
 
-            let scenic_score = view_distance_left * view_distance_right * view_distance_bottom * view_distance_top;
-
-            if visible_left || visible_right || visible_top || visible_bottom {
+            if is_visible {
                 count += 1;
             }
 
