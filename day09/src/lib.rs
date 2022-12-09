@@ -7,8 +7,6 @@ use std::collections::BTreeSet;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::newline;
-use nom::error::Error;
-use nom::error::ErrorKind;
 use nom::multi::separated_list1;
 use nom::*;
 
@@ -124,28 +122,13 @@ impl Rope {
     }
 }
 
-fn direction(input: &str) -> IResult<&str, Direction> {
-    let (input, dir) = alt((tag("U"), tag("D"), tag("L"), tag("R")))(input)?;
-
-    Ok((
-        input,
-        match dir {
-            "U" => Direction::Up,
-            "D" => Direction::Down,
-            "L" => Direction::Left,
-            "R" => Direction::Right,
-            _ => {
-                return Err(nom::Err::Error(Error {
-                    input,
-                    code: ErrorKind::Tag,
-                }));
-            }
-        },
-    ))
-}
-
 fn movement(input: &str) -> IResult<&str, Movement> {
-    let (input, direction) = direction(input)?;
+    let (input, direction) = alt((
+        tag("U").map(|_| Direction::Up),
+        tag("D").map(|_| Direction::Down),
+        tag("L").map(|_| Direction::Left),
+        tag("R").map(|_| Direction::Right),
+    ))(input)?;
     let (input, _) = tag(" ")(input)?;
     let (input, distance) = character::complete::u32(input)?;
 
