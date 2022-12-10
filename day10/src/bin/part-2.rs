@@ -8,6 +8,6 @@ fn main() {
     if let Ok(content) = file {
         let result = process_crt(content);
 
-        println!("{}", result.unwrap());
+        println!("{}", result.unwrap().1);
     }
 }
