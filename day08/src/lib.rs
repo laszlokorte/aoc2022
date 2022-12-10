@@ -2,6 +2,7 @@
 #![feature(iter_intersperse)]
 use take_until::TakeUntilExt;
 
+
 fn walk_tree_cast<I:Iterator<Item=u32>+Clone>(height: u32, ray: I) -> (usize, bool)  {
     (
         ray.clone().take_until(|h| h >= &height).count(),

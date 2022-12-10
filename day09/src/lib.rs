@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 
 use nom::branch::alt;
 use nom::bytes::complete::tag;
-use nom::character::complete::newline;
+use nom::character::complete::line_ending;
 use nom::multi::separated_list1;
 use nom::*;
 
@@ -150,7 +150,7 @@ fn movement(input: &str) -> IResult<&str, Movement> {
 }
 
 fn moves(input: &str) -> IResult<&str, Vec<Movement>> {
-    let (input, cmds) = separated_list1(newline, movement)(input)?;
+    let (input, cmds) = separated_list1(line_ending, movement)(input)?;
 
     Ok((input, cmds))
 }
