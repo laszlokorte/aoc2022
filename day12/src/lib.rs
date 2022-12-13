@@ -29,6 +29,7 @@ struct Step {
     dx: i32,
     dy: i32,
 }
+
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub struct Policy {
     moves: [Step; 4],
@@ -122,6 +123,7 @@ impl<'a> Grid<'a> {
             })
         })
     }
+
     fn neighbour_positions(
         &'a self,
         policy: &'a Policy,
@@ -139,17 +141,15 @@ impl<'a> Grid<'a> {
         pos: &GridPosition,
         step: &Step,
     ) -> Option<GridPosition> {
-        let new_column = (pos.column as i32 + step.dx) as usize;
-        let new_row = (pos.row as i32 + step.dy) as usize;
+        let current_field = self.field_at(pos)?;
+        let target_position = GridPosition {
+            row: (pos.row as i32 + step.dy) as usize,
+            column: (pos.column as i32 + step.dx) as usize,
+        };
+        let target_field = self.field_at(&target_position)?;
 
-        if new_row < self.fields.len()
-            && new_column < self.fields[new_row].len()
-            && policy.allows(self.field_at(pos)?, &self.fields[new_row][new_column])
-        {
-            Some(GridPosition {
-                row: new_row,
-                column: new_column,
-            })
+        if policy.allows(current_field, target_field) {
+            Some(target_position)
         } else {
             None
         }
