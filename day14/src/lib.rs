@@ -186,10 +186,12 @@ impl fmt::Display for Cave {
 pub fn process(input: String, floor: bool) -> Option<(usize, String)> {
     let (_, ref pts) = paths(&input).ok()?;
     let mut grid = std::collections::HashMap::<Point, CellContent>::new();
+
     let segments = pts
         .iter()
         .flat_map(|path| path.points.array_windows().map(|[a, b]| connect(a, b)))
         .collect::<Option<Vec<Line>>>()?;
+
     for segment in segments {
         for point in segment.points() {
             grid.insert(point, CellContent::Stone);
@@ -200,12 +202,12 @@ pub fn process(input: String, floor: bool) -> Option<(usize, String)> {
         source: Point { x: 500, y: 0 },
         floor: None,
     };
+
     if floor {
         cave.insert_floor(2);
     }
-    let counter = cave.fill()?;
-    let visual = format!("{cave}");
-    Some((counter, visual))
+
+    Some((cave.fill()?, format!("{cave}")))
 }
 
 #[cfg(test)]
@@ -214,23 +216,25 @@ mod tests {
 
     #[test]
     fn test_process() {
-        const COMMANDS: &str = "498,4 -> 498,6 -> 496,6
-503,4 -> 502,4 -> 502,9 -> 494,9";
+        const COMMANDS: &str = "\
+        498,4 -> 498,6 -> 496,6\n\
+        503,4 -> 502,4 -> 502,9 -> 494,9";
 
         assert_eq!(
             process(COMMANDS.to_string(), false),
             Some((
                 24,
-                "......+...
-..........
-......o...
-.....ooo..
-....#ooo##
-...o#ooo#.
-..###ooo#.
-....oooo#.
-.o.ooooo#.
-#########."
+                "\
+                ......+...\n\
+                ..........\n\
+                ......o...\n\
+                .....ooo..\n\
+                ....#ooo##\n\
+                ...o#ooo#.\n\
+                ..###ooo#.\n\
+                ....oooo#.\n\
+                .o.ooooo#.\n\
+                #########."
                     .to_string()
             ))
         );
@@ -238,18 +242,19 @@ mod tests {
             process(COMMANDS.to_string(), true),
             Some((
                 93,
-                "..........o..........
-.........ooo.........
-........ooooo........
-.......ooooooo.......
-......oo#ooo##o......
-.....ooo#ooo#ooo.....
-....oo###ooo#oooo....
-...oooo.oooo#ooooo...
-..oooooooooo#oooooo..
-.ooo#########ooooooo.
-ooooo.......ooooooooo
-#####################"
+                "\
+                ..........o..........\n\
+                .........ooo.........\n\
+                ........ooooo........\n\
+                .......ooooooo.......\n\
+                ......oo#ooo##o......\n\
+                .....ooo#ooo#ooo.....\n\
+                ....oo###ooo#oooo....\n\
+                ...oooo.oooo#ooooo...\n\
+                ..oooooooooo#oooooo..\n\
+                .ooo#########ooooooo.\n\
+                ooooo.......ooooooooo\n\
+                #####################"
                     .to_string()
             ))
         );
