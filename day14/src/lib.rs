@@ -11,6 +11,7 @@ use nom::combinator::map;
 use nom::multi::separated_list1;
 use nom::sequence::separated_pair;
 use nom::*;
+use std::fmt;
 
 #[derive(Debug, PartialOrd, Clone, Copy, PartialEq, Eq, Hash)]
 struct Point {
@@ -97,6 +98,7 @@ impl Cave {
     fn insert_floor(&mut self, offset: u32) {
         self.floor = Some(self.grid.keys().map(|p| p.y).max().unwrap_or_default() + offset);
     }
+
     fn fill(&mut self) -> Option<usize> {
         let mut counter = 0;
         self.grid.insert(self.source, CellContent::Source);
@@ -141,7 +143,7 @@ impl Cave {
         None
     }
 }
-use std::fmt;
+
 impl fmt::Display for Cave {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let min_x = self.grid.keys().map(|p| p.x).min().unwrap_or_default();
