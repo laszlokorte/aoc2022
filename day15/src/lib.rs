@@ -16,7 +16,6 @@ use nom::sequence::separated_pair;
 use nom::*;
 use std::collections::HashSet;
 
-use rayon::prelude::*;
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct Position {
     x: i32,
@@ -69,35 +68,33 @@ impl SensorReading {
     }
 }
 
-fn reading(input: &str) -> IResult<&str, SensorReading> {
-    map(
-        pair(
-            preceded(
-                tag("Sensor at x="),
-                separated_pair(
-                    character::complete::i32,
-                    tag(", y="),
-                    character::complete::i32,
-                )
-                .map(Position::from),
-            ),
-            preceded(
-                tag(": closest beacon is at x="),
-                separated_pair(
-                    character::complete::i32,
-                    tag(", y="),
-                    character::complete::i32,
-                )
-                .map(Position::from),
-            ),
-        ),
-        SensorReading::from,
-    )(input)
-}
-
 fn sensor_readings(input: &str) -> IResult<&str, Vec<SensorReading>> {
-    // Sensor at x=2, y=18: closest beacon is at x=-2, y=15
-    separated_list0(line_ending, reading)(input)
+    separated_list0(
+        line_ending,
+        map(
+            pair(
+                preceded(
+                    tag("Sensor at x="),
+                    separated_pair(
+                        character::complete::i32,
+                        tag(", y="),
+                        character::complete::i32,
+                    )
+                    .map(Position::from),
+                ),
+                preceded(
+                    tag(": closest beacon is at x="),
+                    separated_pair(
+                        character::complete::i32,
+                        tag(", y="),
+                        character::complete::i32,
+                    )
+                    .map(Position::from),
+                ),
+            ),
+            SensorReading::from,
+        ),
+    )(input)
 }
 
 pub fn process(input: String, line: i32) -> Option<usize> {
@@ -110,29 +107,34 @@ pub fn process(input: String, line: i32) -> Option<usize> {
     );
     Some(ruled_out.len() - 1)
 }
-
-fn merge_range(
-    a: std::ops::RangeInclusive<i32>,
-    b: std::ops::RangeInclusive<i32>,
-) -> Result<std::ops::RangeInclusive<i32>, std::ops::Range<i32>> {
-    if a.contains(b.start()) || a.contains(b.end()) {
+fn ranges_overlap<T: num::Integer + num::Zero + Copy + Clone>(
+    a: &std::ops::RangeInclusive<T>,
+    b: &std::ops::RangeInclusive<T>,
+) -> bool {
+    T::max(*a.start(), *b.start()) - T::min(*a.end(), *b.end()) <= T::zero()
+}
+fn ranges_merge<T: num::Integer + num::Zero + num::One + Copy + Clone>(
+    a: std::ops::RangeInclusive<T>,
+    b: std::ops::RangeInclusive<T>,
+) -> Result<std::ops::RangeInclusive<T>, std::ops::Range<T>> {
+    if ranges_overlap(&a, &b) {
         Ok(*a.start().min(b.start())..=*(a.end().max(b.end())))
     } else {
-        Err((*a.end().min(b.end()) + 1)..*(a.start().max(b.start())))
+        Err((*a.end().min(b.end()) + T::one())..*(a.start().max(b.start())))
     }
 }
 
 pub fn process_search(input: String, limit: i32) -> Option<u64> {
     let (_, readings) = sensor_readings(&input).ok()?;
     let rng: Vec<i32> = (0..=limit).collect();
-    rng.par_iter().find_map_any(|&line| {
+    rng.iter().find_map(|&line| {
         let mut ranges = readings
             .iter()
             .flat_map(|r| r.reachable_range_at_y(line))
             .collect::<Vec<_>>();
         ranges.sort_by_key(|r| *r.start());
 
-        if let Err(e) = ranges.iter().cloned().try_reduce(merge_range) {
+        if let Err(e) = ranges.iter().cloned().try_reduce(ranges_merge) {
             return Some(e.start as u64 * 4000000 + line as u64);
         }
 

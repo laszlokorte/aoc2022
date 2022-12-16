@@ -5,4 +5,4 @@ edition = "2021"
 
 [dependencies]
 nom = "7.1.1"
-rayon = "1.6.1"
+num = "0.4.0"
