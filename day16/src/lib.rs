@@ -181,12 +181,13 @@ struct State<const PLAYERS: usize> {
     players: [PlayerState; PLAYERS],
     pressure_released: u32,
     closed: ClosedValves,
+    visited: BTreeSet<usize>,
 }
 
 #[derive(Debug, Default, Copy, Eq, PartialEq, Clone)]
 struct PlayerState {
     time: u32,
-    just_moved: bool,
+    just_moved: usize,
     current_position: usize,
     open_flow: u32,
 }
@@ -217,6 +218,7 @@ pub fn process<const PLAYERS: usize>(
         .iter()
         .position(|l| l == &start_pos_label)?;
     let best = optimize_graph::<PLAYERS>(&reduced_graph, start_pos, time_limit);
+    dbg!(&best);
     best.map(|s| s.pressure_released)
 }
 pub fn process_elephant(input: String) -> Option<u32> {
@@ -248,6 +250,7 @@ fn optimize_graph<const PLAYERS: usize>(
     time_limit: u32,
 ) -> Option<State<PLAYERS>> {
     let initial_state = State {
+        visited: BTreeSet::default(),
         turn: 0,
         players: [PlayerState {
             current_position: start_position,
@@ -259,11 +262,11 @@ fn optimize_graph<const PLAYERS: usize>(
             .into_iter()
             .collect(),
     };
-
     let mut queue = std::collections::VecDeque::new();
     queue.push_front(initial_state.clone());
     let mut best = initial_state.clone();
     while let Some(State {
+        visited,
         turn,
         pressure_released,
         closed,
@@ -274,21 +277,32 @@ fn optimize_graph<const PLAYERS: usize>(
         let time = players[turn].time;
         // println!("{:?},{}", time, turn);
         if time >= time_limit {
-            if pressure_released > best.pressure_released {
+            if turn + 1 < PLAYERS {
+                queue.push_front(State {
+                    visited: visited.clone(),
+                    turn: turn + 1,
+                    closed: closed.clone(),
+                    pressure_released,
+                    players,
+                })
+            } else if pressure_released > best.pressure_released {
                 best = State {
+                    visited: visited.clone(),
                     turn,
                     pressure_released,
                     players,
-                    closed,
+                    closed: closed.clone(),
                 };
             }
             continue;
         }
+
         if closed.is_empty() && time < time_limit {
             let mut players_new = players;
-            players_new[turn].just_moved = false;
+            players_new[turn].just_moved = 0;
             players_new[turn].time += 1;
             queue.push_front(State {
+                visited: visited.clone(),
                 turn: turn + 1,
                 closed: closed.clone(),
                 pressure_released: pressure_released + players[turn].open_flow,
@@ -303,27 +317,31 @@ fn optimize_graph<const PLAYERS: usize>(
             let reduction = graph.nodes[players[turn].current_position];
             let mut players_new = players;
             let current_open_flow = players[turn].open_flow;
-            players_new[turn].just_moved = false;
+            players_new[turn].just_moved = 0;
             players_new[turn].time += 1;
             players_new[turn].open_flow += reduction;
             queue.push_front(State {
+                visited: visited.clone(),
                 turn: turn + 1,
                 players: players_new,
                 closed: opened,
                 pressure_released: pressure_released + current_open_flow,
             })
         }
-        if players[turn].just_moved {
+        if players[turn].just_moved > 0 {
             continue;
         }
         for (target, time_needed) in can_move.iter().enumerate() {
             if let Some(t) = time_needed {
                 if time + t <= time_limit && t > &0 {
                     let mut players_new = players;
-                    players_new[turn].just_moved = true;
+                    players_new[turn].just_moved += 1;
                     players_new[turn].current_position = target;
                     players_new[turn].time += *t;
+                    let mut new_visited = visited.clone();
+                    new_visited.insert(target);
                     queue.push_front(State {
+                        visited: new_visited,
                         players: players_new,
                         turn: turn + 1,
                         closed: closed.clone(),
@@ -353,8 +371,11 @@ Valve GG has flow rate=0; tunnels lead to valves FF, HH
 Valve HH has flow rate=22; tunnel leads to valve GG
 Valve II has flow rate=0; tunnels lead to valves AA, JJ
 Valve JJ has flow rate=21; tunnel leads to valve II";
-
+        assert_eq!(
+            process::<1>(include_str!("../input.txt").to_string(), "AA", 30),
+            Some(1754)
+        );
         assert_eq!(process::<1>(COMMANDS.to_string(), "AA", 30), Some(1651));
-        assert_eq!(process::<2>(COMMANDS.to_string(), "AA", 26), Some(1707));
+        // assert_eq!(process::<2>(COMMANDS.to_string(), "AA", 26), Some(1707));
     }
 }
