@@ -238,8 +238,8 @@ fn optimize_graph<const PLAYERS: usize>(
             .collect(),
     };
     let mut queue = std::collections::VecDeque::new();
-    queue.push_front(initial_state.clone());
-    let mut best = initial_state;
+    let mut best = initial_state.clone();
+    queue.push_front(initial_state);
     while let Some(State {
         turn,
         pressure_released,
@@ -343,6 +343,6 @@ Valve JJ has flow rate=21; tunnel leads to valve II";
             Some(1754)
         );
         assert_eq!(process::<1>(COMMANDS.to_string(), "AA", 30), Some(1651));
-        // assert_eq!(process::<2>(COMMANDS.to_string(), "AA", 26), Some(1707));
+        assert_eq!(process::<2>(COMMANDS.to_string(), "AA", 26), Some(1707));
     }
 }
