@@ -178,48 +178,14 @@ type ClosedValves = BTreeSet<usize>;
 #[derive(Debug, Eq, PartialEq, Clone)]
 struct State<const PLAYERS: usize> {
     turn: usize,
-    players: [PlayerState; PLAYERS],
-    pressure_released: u32,
-    closed: ClosedValves,
-}
-
-#[derive(Debug, Default, Copy, Eq, PartialEq, Clone)]
-struct PlayerState {
+    just_moved: [bool; PLAYERS],
     time: u32,
-    just_moved: bool,
-    current_position: usize,
+    pressure_released: u32,
     open_flow: u32,
+    closed: ClosedValves,
+    current_position: [usize; PLAYERS],
 }
-
-pub fn process<const PLAYERS: usize>(
-    input: String,
-    start_pos_label: &str,
-    time_limit: u32,
-) -> Option<u32> {
-    let (_, conns) = connections(&input).ok()?;
-    let mut graph = Graph::try_from(&conns).ok()?;
-    graph.floyd_warshall();
-    let reduced_graph = graph.without_nodes(
-        &conns
-            .iter()
-            .enumerate()
-            .filter_map(|(i, n)| {
-                if n.flow_rate > 0 || n.name == start_pos_label {
-                    None
-                } else {
-                    Some(i)
-                }
-            })
-            .collect(),
-    );
-    let start_pos = reduced_graph
-        .labels
-        .iter()
-        .position(|l| l == &start_pos_label)?;
-    let best = optimize_graph::<PLAYERS>(&reduced_graph, start_pos, time_limit);
-    best.map(|s| s.pressure_released)
-}
-pub fn process_elephant(input: String) -> Option<u32> {
+pub fn process(input: String) -> Option<u32> {
     let (_, conns) = connections(&input).ok()?;
     let mut graph = Graph::try_from(&conns).ok()?;
     graph.floyd_warshall();
@@ -237,8 +203,7 @@ pub fn process_elephant(input: String) -> Option<u32> {
             .collect(),
     );
     let start_pos = reduced_graph.labels.iter().position(|l| l == &"AA")?;
-    let best = optimize_graph::<2>(&reduced_graph, start_pos, 26);
-    dbg!(&best);
+    let best = optimize_graph::<1>(&reduced_graph, start_pos, 30);
     best.map(|s| s.pressure_released)
 }
 
@@ -249,85 +214,86 @@ fn optimize_graph<const PLAYERS: usize>(
 ) -> Option<State<PLAYERS>> {
     let initial_state = State {
         turn: 0,
-        players: [PlayerState {
-            current_position: start_position,
-            ..PlayerState::default()
-        }; PLAYERS],
+        just_moved: [false; PLAYERS],
+        time: 0,
+        open_flow: 0,
         pressure_released: 0,
         closed: (0..graph.labels.len())
             .filter(|n| graph.nodes[*n] > 0)
             .into_iter()
             .collect(),
+        current_position: [start_position; PLAYERS],
     };
 
     let mut queue = std::collections::VecDeque::new();
-    queue.push_front(initial_state.clone());
+    queue.push_back(initial_state.clone());
     let mut best = initial_state.clone();
+
     while let Some(State {
         turn,
+        just_moved,
+        open_flow,
+        time,
         pressure_released,
+        current_position,
         closed,
-        players,
     }) = queue.pop_front()
     {
-        let turn = turn % PLAYERS;
-        let time = players[turn].time;
-        // println!("{:?},{}", time, turn);
         if time >= time_limit {
             if pressure_released > best.pressure_released {
                 best = State {
                     turn,
+                    just_moved,
+                    open_flow,
+                    time,
                     pressure_released,
-                    players,
+                    current_position,
                     closed,
                 };
             }
             continue;
         }
-        if closed.is_empty() && time < time_limit {
-            let mut players_new = players;
-            players_new[turn].just_moved = false;
-            players_new[turn].time += 1;
-            queue.push_front(State {
-                turn: turn + 1,
+        if closed.is_empty() {
+            queue.push_back(State {
+                turn,
+                just_moved: [false; PLAYERS],
+                open_flow,
                 closed: closed.clone(),
-                pressure_released: pressure_released + players[turn].open_flow,
-                players: players_new,
+                current_position,
+                pressure_released: pressure_released + (time_limit - time) * open_flow,
+                time: time_limit,
             });
         }
-        let can_move = &graph.matrix[players[turn].current_position];
+        let can_move = &graph.matrix[current_position[turn]];
 
-        if closed.contains(&players[turn].current_position) {
+        if closed.contains(&current_position[turn]) {
             let mut opened = closed.clone();
-            opened.remove(&players[turn].current_position);
-            let reduction = graph.nodes[players[turn].current_position];
-            let mut players_new = players;
-            let current_open_flow = players[turn].open_flow;
-            players_new[turn].just_moved = false;
-            players_new[turn].time += 1;
-            players_new[turn].open_flow += reduction;
-            queue.push_front(State {
-                turn: turn + 1,
-                players: players_new,
+            opened.remove(&current_position[turn]);
+            let reduction = graph.nodes[current_position[turn]];
+            queue.push_back(State {
+                turn,
+                just_moved: [false; PLAYERS],
+                open_flow: open_flow + reduction,
                 closed: opened,
-                pressure_released: pressure_released + current_open_flow,
+                current_position,
+                pressure_released: pressure_released + open_flow,
+                time: time + 1,
             })
         }
-        if players[turn].just_moved {
+        if just_moved[turn] {
             continue;
         }
         for (target, time_needed) in can_move.iter().enumerate() {
             if let Some(t) = time_needed {
-                if time + t <= time_limit && t > &0 {
-                    let mut players_new = players;
-                    players_new[turn].just_moved = true;
-                    players_new[turn].current_position = target;
-                    players_new[turn].time += *t;
-                    queue.push_front(State {
-                        players: players_new,
-                        turn: turn + 1,
+                if time + t <= time_limit {
+                    queue.push_back(State {
+                        turn,
+                        just_moved: [true; PLAYERS],
+                        open_flow,
                         closed: closed.clone(),
-                        pressure_released: pressure_released + players[turn].open_flow * t,
+                        current_position: [target; PLAYERS],
+                        pressure_released: pressure_released + open_flow * t,
+                        time: time + t,
                     })
                 }
             }
@@ -354,7 +320,6 @@ Valve HH has flow rate=22; tunnel leads to valve GG
 Valve II has flow rate=0; tunnels lead to valves AA, JJ
 Valve JJ has flow rate=21; tunnel leads to valve II";
 
-        assert_eq!(process::<1>(COMMANDS.to_string(), "AA", 30), Some(1651));
-        assert_eq!(process::<2>(COMMANDS.to_string(), "AA", 26), Some(1707));
+        assert_eq!(process(COMMANDS.to_string()), Some(1651));
     }
 }
