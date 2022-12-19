@@ -6,6 +6,8 @@
 #![feature(iter_intersperse)]
 #![feature(step_trait)]
 
+use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 #[derive(Debug)]
@@ -61,7 +63,7 @@ impl Shape {
 
 type Stone = HashSet<Position>;
 
-#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
 struct Position {
     x: i64,
     y: i64,
@@ -123,7 +125,7 @@ impl<const WIDTH: i64> std::fmt::Display for Cave<WIDTH> {
                     write!(f, ".")?;
                 }
             }
-            writeln!(f, "")?;
+            writeln!(f)?;
         }
 
         writeln!(f, "*******")
@@ -145,12 +147,12 @@ impl<const WIDTH: i64> Cave<WIDTH> {
     }
 
     fn is_free(&self, pos: &Position) -> bool {
-        (0..WIDTH).contains(&pos.x) && pos.y >= 0 && !self.fields.contains(&pos)
+        (0..WIDTH).contains(&pos.x) && pos.y >= 0 && !self.fields.contains(pos)
     }
     const GRAVITY: Direction = Direction::Down;
     fn step(&mut self, wind: &Direction) -> bool {
         if let Some(stone) = &self.stone {
-            let fragments = stone.iter().map(|p| p.step(&wind));
+            let fragments = stone.iter().map(|p| p.step(wind));
 
             let valid = fragments.clone().all(|p| self.is_free(&p));
             let new_stone = if valid {
@@ -177,7 +179,7 @@ impl<const WIDTH: i64> Cave<WIDTH> {
     }
 
     fn spawn(&mut self, shape: &Shape) {
-        if self.stone == None {
+        if self.stone.is_none() {
             self.stone = Some(shape.spawn_at(&self.spawn_position()));
         }
     }
@@ -188,7 +190,81 @@ impl<const WIDTH: i64> Cave<WIDTH> {
             y: self.max_height() + 3,
         }
     }
+
+    fn get_top(&self, rows: u64) -> BTreeSet<Position> {
+        let top = self.max_height();
+        let range = (top - rows as i64)..top;
+
+        self.fields
+            .iter()
+            .filter(|p| range.contains(&p.y))
+            .map(|p| Position {
+                x: p.x,
+                y: top - p.y,
+            })
+            .collect()
+    }
 }
+#[derive(Hash, Eq, PartialEq)]
+struct CycleIndex {
+    tops: BTreeSet<Position>,
+    shape_index: usize,
+    wind_index: usize,
+}
+
+struct CycleEntry {
+    height: i64,
+    stone_number: u64,
+}
+
+#[derive(Default)]
+struct CycleDetector {
+    cycles: HashMap<CycleIndex, CycleEntry>,
+}
+
+struct CycleResult {
+    remaining_drops: std::ops::Range<u64>,
+    extrapolated_height: i64,
+}
+
+impl CycleDetector {
+    fn detect(
+        &mut self,
+        tops: BTreeSet<Position>,
+        shape_index: usize,
+        wind_index: usize,
+        current_height: i64,
+        stone_number: u64,
+        iterations: u64,
+    ) -> Option<CycleResult> {
+        if let Some(detected) = &mut self.cycles.insert(
+            CycleIndex {
+                tops,
+                shape_index,
+                wind_index,
+            },
+            CycleEntry {
+                stone_number,
+                height: current_height,
+            },
+        ) {
+            let delta_height = current_height - detected.height;
+            let height_before_cycle = detected.height;
+            let delta_drops = stone_number - detected.stone_number;
+            let remaining_drops = iterations - detected.stone_number;
+            let skippable_cycles = remaining_drops / delta_drops;
+            let drops_to_do = remaining_drops % delta_drops;
+            let skippable_height = skippable_cycles as i64 * delta_height;
+            Some(CycleResult {
+                remaining_drops: (iterations - drops_to_do + 1)..iterations,
+                extrapolated_height: skippable_height + height_before_cycle - current_height,
+            })
+        } else {
+            None
+        }
+    }
+}
+
 pub fn process(input: String, iterations: u64) -> Option<i64> {
     let wind = input
         .chars()
@@ -206,15 +282,41 @@ pub fn process(input: String, iterations: u64) -> Option<i64> {
         Shape::Box,
     ];
     let mut cave = Cave::<7>::new();
-    let mut w = 0;
-    for r in 0..iterations {
-        let shape_index = r as usize % SHAPES.len();
+    let mut cycle_detector = CycleDetector::default();
+    let mut wind_index = 0;
+    for stone_number in 0..iterations {
+        let shape_index = stone_number as usize % SHAPES.len();
         let current_shape = &SHAPES[shape_index];
         cave.spawn(current_shape);
-        while cave.step(&wind[w % wind.len()]) {
-            w += 1;
+        while cave.step(&wind[wind_index]) {
+            wind_index += 1;
+            wind_index %= wind.len();
         }
-        w += 1;
+        wind_index += 1;
+        wind_index %= wind.len();
+        let tops = cave.get_top(4);
+        if let Some(cycle) = cycle_detector.detect(
+            tops,
+            shape_index,
+            wind_index,
+            cave.max_height(),
+            stone_number,
+            iterations,
+        ) {
+            for stone_number in cycle.remaining_drops {
+                let shape_index = stone_number as usize % SHAPES.len();
+                let current_shape = &SHAPES[shape_index];
+                cave.spawn(current_shape);
+                while cave.step(&wind[wind_index]) {
+                    wind_index += 1;
+                    wind_index %= wind.len();
+                }
+                wind_index += 1;
+                wind_index %= wind.len();
+            }
+
+            return Some(cave.max_height() + cycle.extrapolated_height);
+        }
     }
     Some(cave.max_height())
 }
@@ -228,5 +330,9 @@ mod tests {
         const COMMANDS: &str = ">>><<><>><<<>><>>><<<>>><<<><<<>><>><<>>";
 
         assert_eq!(process(COMMANDS.to_string(), 2022), Some(3068));
+        assert_eq!(
+            process(COMMANDS.to_string(), 1000000000000),
+            Some(1514285714288)
+        );
     }
 }
