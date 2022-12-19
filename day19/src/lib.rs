@@ -16,7 +16,7 @@ use nom::{
     *,
 };
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 enum Resource {
@@ -35,104 +35,6 @@ struct Cost {
 struct Blueprint {
     id: u32,
     robots: HashMap<Resource, Cost>,
-}
-
-impl Blueprint {
-    fn usefulness(&self, resource: &Resource) -> u32 {
-        self.robots
-            .iter()
-            .map(|(_, cost)| cost.ingredients.get(resource).unwrap_or(&0))
-            .max()
-            .cloned()
-            .unwrap_or(0)
-    }
-}
-
-#[derive(Clone, Debug)]
-struct State<'blueprint> {
-    blueprint: &'blueprint Blueprint,
-    time_left: u32,
-    resources: HashMap<Resource, u32>,
-    robots: HashMap<Resource, u32>,
-}
-
-impl<'blueprint> State<'blueprint> {
-    fn new(blueprint: &'blueprint Blueprint, time_left: u32) -> Self {
-        let mut robots = HashMap::new();
-        robots.insert(Resource::Ore, 1);
-        State {
-            blueprint,
-            time_left,
-            resources: HashMap::new(),
-            robots,
-        }
-    }
-
-    fn step(&self) -> Option<Self> {
-        if self.time_left < 1 {
-            return None;
-        }
-        let mut next_state = self.clone();
-        next_state.time_left -= 1;
-
-        for (res, amount) in self.robots.iter() {
-            *next_state.resources.entry(*res).or_insert(0) += amount;
-        }
-
-        Some(next_state)
-    }
-
-    fn try_build_robot(&self, robot: &Resource) -> Option<Self> {
-        if let Some(cost) = self.blueprint.robots.get(&robot) {
-            if cost
-                .ingredients
-                .iter()
-                .all(|(res, amount)| &self.resources.get(res).unwrap_or(&0) >= &amount)
-            {
-                let mut next_state = self.clone();
-
-                for (res, amount) in cost.ingredients.iter() {
-                    *next_state.resources.entry(*res).or_insert(0) -= amount;
-                }
-
-                *next_state.robots.entry(*robot).or_insert(0) += 1;
-                return Some(next_state);
-            }
-        }
-
-        None
-    }
-    const ALL_RESOURCES: [Resource; 3] = [
-        // Resource::Ore,
-        Resource::Clay,
-        Resource::Obsidian,
-        Resource::Geode,
-    ];
-    fn highest_resource(&self, resource: &Resource) -> u32 {
-        let usefuls = Self::ALL_RESOURCES.iter().filter(|r| {
-            &resource != r
-                && &self.blueprint.usefulness(r) > self.robots.get(resource).unwrap_or(&0)
-        });
-        let alternative_builds = [resource]
-            .into_iter()
-            .chain(usefuls)
-            .chain([&Resource::Ore].into_iter());
-
-        alternative_builds
-            .clone()
-            .find_map(|r| self.try_build_robot(r))
-            .iter()
-            .chain(
-                [Some(self), self.try_build_robot(&Resource::Ore).as_ref()]
-                    .into_iter()
-                    .filter_map(|s| s),
-            )
-            .filter_map(|s| s.step())
-            .map(|s| s.highest_resource(&resource))
-            .max()
-            .or(self.resources.get(&resource).cloned())
-            .unwrap_or(0)
-    }
 }
 
 fn resource(input: &str) -> IResult<&str, Resource> {
@@ -186,14 +88,173 @@ fn blueprint(input: &str) -> IResult<&str, Blueprint> {
 fn blueprints(input: &str) -> IResult<&str, Vec<Blueprint>> {
     separated_list1(multispace1, blueprint)(input)
 }
-pub fn process(input: String) -> Option<u32> {
+
+#[derive(Debug)]
+struct Rule {
+    target: usize,
+    costs: [[u32; 4]; 4],
+    max_utility: [u32; 4],
+}
+
+impl From<&Blueprint> for Rule {
+    fn from(value: &Blueprint) -> Self {
+        let mapping = [
+            Resource::Ore,
+            Resource::Clay,
+            Resource::Obsidian,
+            Resource::Geode,
+        ];
+        Rule {
+            target: 3,
+            costs: mapping.map(|r| {
+                mapping.map(|c| {
+                    value
+                        .robots
+                        .get(&r)
+                        .and_then(|cc| cc.ingredients.get(&c))
+                        .cloned()
+                        .unwrap_or_default()
+                })
+            }),
+            max_utility: mapping.map(|r| {
+                value
+                    .robots
+                    .values()
+                    .map(|costs| costs.ingredients.get(&r).unwrap_or(&0))
+                    .max()
+                    .cloned()
+                    .unwrap_or(0)
+            }),
+        }
+    }
+}
+
+impl Rule {
+    fn can_buy(&self, state: &State, resource_index: usize) -> bool {
+        state.resources[0] >= self.costs[resource_index][0]
+            && state.resources[1] >= self.costs[resource_index][1]
+            && state.resources[2] >= self.costs[resource_index][2]
+            && state.resources[3] >= self.costs[resource_index][3]
+    }
+
+    fn buying_to_late(&self, state: &State, resource_index: usize) -> bool {
+        state.rejected_to_buy[resource_index]
+    }
+
+    fn is_useful(&self, state: &State, robot_index: usize) -> bool {
+        state.robots[robot_index] < self.max_utility[robot_index]
+    }
+
+    fn do_nothing(&self, state: &State) -> State {
+        let mut new_state = *state;
+        new_state.time_left -= 1;
+        new_state.rejected_to_buy[0] = self.can_buy(&new_state, 0);
+        new_state.rejected_to_buy[1] = self.can_buy(&new_state, 1);
+        new_state.rejected_to_buy[2] = self.can_buy(&new_state, 2);
+        new_state.rejected_to_buy[3] = self.can_buy(&new_state, 3);
+
+        new_state.resources[0] += new_state.robots[0];
+        new_state.resources[1] += new_state.robots[1];
+        new_state.resources[2] += new_state.robots[2];
+        new_state.resources[3] += new_state.robots[3];
+        new_state
+    }
+
+    fn buy_robot(&self, state: &State, robot_index: usize) -> State {
+        let mut new_state = *state;
+        new_state.time_left -= 1;
+        new_state.rejected_to_buy = [false; 4];
+        new_state.resources[0] -= self.costs[robot_index][0];
+        new_state.resources[1] -= self.costs[robot_index][1];
+        new_state.resources[2] -= self.costs[robot_index][2];
+        new_state.resources[3] -= self.costs[robot_index][3];
+        new_state.resources[0] += new_state.robots[0];
+        new_state.resources[1] += new_state.robots[1];
+        new_state.resources[2] += new_state.robots[2];
+        new_state.resources[3] += new_state.robots[3];
+        new_state.robots[robot_index] += 1;
+        new_state
+    }
+}
+#[derive(Copy, Clone)]
+struct State {
+    resources: [u32; 4],
+    robots: [u32; 4],
+    rejected_to_buy: [bool; 4],
+    time_left: u32,
+}
+impl State {
+    fn new(time_left: u32) -> Self {
+        Self {
+            resources: [0; 4],
+            robots: [1, 0, 0, 0],
+            rejected_to_buy: [false; 4],
+            time_left,
+        }
+    }
+}
+
+fn optimize(rules: &Rule, initial: &State) -> u32 {
+    let mut queue = VecDeque::new();
+    queue.push_back(*initial);
+    let mut best = 0;
+    while let Some(current) = queue.pop_front() {
+        if current.time_left == 0 {
+            best = best.max(current.resources[rules.target]);
+            continue;
+        }
+        if rules.can_buy(&current, rules.target) {
+            queue.push_back(rules.buy_robot(&current, rules.target));
+        } else {
+            if rules.is_useful(&current, 0)
+                && rules.can_buy(&current, 0)
+                && !rules.buying_to_late(&current, 0)
+            {
+                queue.push_back(rules.buy_robot(&current, 0));
+            }
+            if rules.is_useful(&current, 1)
+                && rules.can_buy(&current, 1)
+                && !rules.buying_to_late(&current, 1)
+            {
+                queue.push_back(rules.buy_robot(&current, 1));
+            }
+            if rules.is_useful(&current, 2)
+                && rules.can_buy(&current, 2)
+                && !rules.buying_to_late(&current, 2)
+            {
+                queue.push_back(rules.buy_robot(&current, 2));
+            }
+            if rules.is_useful(&current, 3)
+                && rules.can_buy(&current, 3)
+                && !rules.buying_to_late(&current, 3)
+            {
+                queue.push_back(rules.buy_robot(&current, 3));
+            }
+            queue.push_back(rules.do_nothing(&current));
+        }
+    }
+    best
+}
+pub fn process(input: String, minutes: u32) -> Option<u32> {
     let (_, blues) = blueprints(&input).ok()?;
 
     Some(
         blues
             .par_iter()
-            .map(|bp| bp.id * State::new(bp, 24).highest_resource(&Resource::Geode))
+            .map(|bp| bp.id * optimize(&Rule::from(bp), &State::new(minutes)))
             .sum(),
+    )
+}
+
+pub fn process_part2(input: String, minutes: u32) -> Option<u32> {
+    let (_, blues) = blueprints(&input).ok()?;
+
+    Some(
+        blues
+            .par_iter()
+            .take(3)
+            .map(|bp| optimize(&Rule::from(bp), &State::new(minutes)))
+            .product(),
     )
 }
 
@@ -215,6 +276,7 @@ Blueprint 2:
   Each obsidian robot costs 3 ore and 8 clay.
   Each geode robot costs 3 ore and 12 obsidian.";
 
-        assert_eq!(process(COMMANDS.to_string()), Some(33));
+        assert_eq!(process(COMMANDS.to_string(), 24), Some(33));
+        assert_eq!(process_part2(COMMANDS.to_string(), 32), Some(3472));
     }
 }
