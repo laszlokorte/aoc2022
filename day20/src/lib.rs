@@ -38,39 +38,43 @@ impl Permutation {
     }
 }
 
-pub fn process(input: String) -> Option<i32> {
-    let numbers: Vec<i32> = input
+pub fn process(input: String, multiplier: i64, repetitions: u64) -> Option<i64> {
+    let numbers: Vec<i64> = input
         .lines()
         .map(str::parse)
         .collect::<Result<Vec<_>, _>>()
-        .ok()?;
+        .ok()?
+        .into_iter()
+        .map(|n: i64| n * multiplier)
+        .collect();
     let size = numbers.len();
     // println!("{size}");
 
     let mut permutation = Permutation::new(size);
+    for _ in 0..repetitions {
+        for i in 0..size {
+            let movement = numbers[i];
+            let mut distance = movement.abs() as usize % (size - 1);
+            let mut negative = movement.is_negative();
 
-    for i in 0..size {
-        let movement = numbers[i];
-        let mut distance = movement.abs() as usize % (size - 1);
-        let mut negative = movement.is_negative();
+            let start_position = permutation.get_now(i);
+            if !(1..size as i64).contains(&(start_position as i64 + movement as i64)) {
+                distance = size - distance - 1;
+                negative = !negative;
+            }
+            let number_of_swaps = distance;
+            let mut current_position = start_position;
+            for _ in 0..number_of_swaps {
+                let target_position = if negative {
+                    current_position + size - 1
+                } else {
+                    current_position + size + 1
+                } % size;
 
-        let start_position = permutation.get_now(i);
-        if !(1..size as i64).contains(&(start_position as i64 + movement as i64)) {
-            distance = size - distance - 1;
-            negative = !negative;
-        }
-        let number_of_swaps = distance;
-        let mut current_position = start_position;
-        for _ in 0..number_of_swaps {
-            let target_position = if negative {
-                current_position + size - 1
-            } else {
-                current_position + size + 1
-            } % size;
+                permutation.swap(current_position, target_position);
 
-            permutation.swap(current_position, target_position);
-
-            current_position = target_position;
+                current_position = target_position;
+            }
         }
     }
     let original_zero = numbers.iter().position(|n| n == &0)?;
@@ -97,6 +101,10 @@ mod tests {
 0
 4";
 
-        assert_eq!(process(COMMANDS.to_string()), Some(3));
+        assert_eq!(process(COMMANDS.to_string(), 1, 1), Some(3));
+        assert_eq!(
+            process(COMMANDS.to_string(), 811589153, 10),
+            Some(1623178306)
+        );
     }
 }
