@@ -21,7 +21,6 @@ impl Permutation {
     }
 
     fn swap(&mut self, a: usize, b: usize) {
-        // println!("swap pos {a} with {b}");
         let a_original = self.now_to_original[a];
         let b_original = self.now_to_original[b];
         let a_after_swap = b;
@@ -39,46 +38,36 @@ impl Permutation {
 }
 
 pub fn process(input: String, multiplier: i64, repetitions: u64) -> Option<i64> {
-    let numbers: Vec<i64> = input
+    let numbers: Vec<_> = input
         .lines()
         .map(str::parse)
+        .map(|r| r.map(|n: i64| n * multiplier))
         .collect::<Result<Vec<_>, _>>()
-        .ok()?
-        .into_iter()
-        .map(|n: i64| n * multiplier)
-        .collect();
+        .ok()?;
     let size = numbers.len();
-    // println!("{size}");
 
     let mut permutation = Permutation::new(size);
     for _ in 0..repetitions {
         for i in 0..size {
             let movement = numbers[i];
-            let mut distance = movement.abs() as usize % (size - 1);
-            let mut negative = movement.is_negative();
-
             let start_position = permutation.get_now(i);
-            if !(1..size as i64).contains(&(start_position as i64 + movement as i64)) {
-                distance = size - distance - 1;
-                negative = !negative;
-            }
-            let number_of_swaps = distance;
+            let distance = movement.abs() as usize % (size - 1);
+            let negative = movement.is_negative();
+
             let mut current_position = start_position;
-            for _ in 0..number_of_swaps {
-                let target_position = if negative {
-                    current_position + size - 1
-                } else {
-                    current_position + size + 1
-                } % size;
+            for _ in 0..distance {
+                let target_position =
+                    (current_position + if negative { size - 1 } else { 1 }) % size;
 
                 permutation.swap(current_position, target_position);
-
                 current_position = target_position;
             }
         }
     }
+
     let original_zero = numbers.iter().position(|n| n == &0)?;
     let zero_pos_now = permutation.original_to_now[original_zero];
+
     Some(
         [1000, 2000, 3000]
             .into_iter()
