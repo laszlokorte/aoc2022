@@ -7,7 +7,7 @@
 #![feature(iter_intersperse)]
 #![feature(step_trait)]
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::HashMap;
 
 use nom::{
     branch::alt,
@@ -29,6 +29,111 @@ enum Field {
     Void,
     Free,
     Stone,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Portal {
+    pub entrance_start: (usize, usize),
+    pub entrance_end: (usize, usize),
+    pub entrance_direction: Direction,
+    pub exit_start: (usize, usize),
+    pub exit_end: (usize, usize),
+    pub exit_direction: Direction,
+}
+
+impl Portal {
+    fn teleport(
+        &self,
+        (x, y): (usize, usize),
+        direction: Direction,
+    ) -> Option<((usize, usize), Direction)> {
+        if direction == self.entrance_direction {
+            if self.entrance_orientation_at((x, y)).is_some() {
+                let (start_x, start_y) = self.entrance_start;
+                let (end_x, end_y) = self.entrance_end;
+                let mask_x = (end_x as i32 - start_x as i32).signum();
+                let mask_y = (end_y as i32 - start_y as i32).signum();
+                let delta_x = x as i32 - start_x as i32;
+                let delta_y = y as i32 - start_y as i32;
+                let projected_length = delta_x * mask_x + delta_y * mask_y;
+
+                let (exit_start_x, exit_start_y) = self.exit_start;
+                let (exit_end_x, exit_end_y) = self.exit_end;
+                let exit_mask_x = (exit_end_x as i32 - exit_start_x as i32).signum();
+                let exit_mask_y = (exit_end_y as i32 - exit_start_y as i32).signum();
+
+                let projected_x = exit_start_x as i32 + projected_length * exit_mask_x;
+                let projected_y = exit_start_y as i32 + projected_length * exit_mask_y;
+                // dbg!(exit_mask_x, exit_mask_y);
+                // dbg!(self.entrance_start);
+                // dbg!(self.exit_start);
+                // dbg!(x, y);
+                // dbg!(delta_x, delta_y);
+                // dbg!(projected_x, projected_y);
+                // dbg!(self.exit_direction);
+                return Some((
+                    (projected_x as usize, projected_y as usize),
+                    self.exit_direction,
+                ));
+            }
+        }
+
+        return None;
+    }
+
+    pub fn inverse(&self) -> Self {
+        Self {
+            entrance_start: self.exit_start,
+            entrance_end: self.exit_end,
+            exit_start: self.entrance_start,
+            exit_end: self.entrance_end,
+            entrance_direction: self.exit_direction.opposite(),
+            exit_direction: self.entrance_direction.opposite(),
+        }
+    }
+
+    fn entrance_orientation_at(&self, (x, y): (usize, usize)) -> Option<Direction> {
+        Self::orientation_at(self.entrance_start, self.entrance_end, (x, y))
+    }
+
+    fn orientation_at(
+        (start_x, start_y): (usize, usize),
+        (end_x, end_y): (usize, usize),
+        (x, y): (usize, usize),
+    ) -> Option<Direction> {
+        let min_x = start_x.min(end_x);
+        let max_x = start_x.max(end_x);
+        let min_y = start_y.min(end_y);
+        let max_y = start_y.max(end_y);
+
+        if x == start_x && x == end_x {
+            if (min_y..=max_y).contains(&y) {
+                Some(if start_y > end_y {
+                    Direction::Up
+                } else {
+                    Direction::Down
+                })
+            } else {
+                None
+            }
+        } else if y == start_y && y == end_y {
+            if (min_x..=max_x).contains(&x) {
+                Some(if start_x > end_x {
+                    Direction::Left
+                } else {
+                    Direction::Right
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    // fn exit_orientation_at(&self, (x, y): (usize, usize)) -> Option<Direction> {
+    //     Self::orientation_at(self.exit_start, self.exit_end, (x, y))
+    // }
 }
 
 impl std::fmt::Display for Field {
@@ -74,6 +179,7 @@ impl std::fmt::Display for Row {
 struct Puzzle {
     rows: Vec<Row>,
     steps: Vec<Move>,
+    portals: Vec<Portal>,
 }
 
 impl Puzzle {
@@ -90,11 +196,22 @@ impl Puzzle {
 }
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
-enum Direction {
+pub enum Direction {
     Right,
     Down,
     Left,
     Up,
+}
+
+impl Direction {
+    pub fn opposite(&self) -> Direction {
+        match &self {
+            Self::Right => Self::Left,
+            Self::Down => Self::Up,
+            Self::Left => Self::Right,
+            Self::Up => Self::Down,
+        }
+    }
 }
 
 impl std::fmt::Display for Direction {
@@ -157,9 +274,11 @@ impl<'a> State<'a> {
             }
             Move::Forward(distance) => {
                 for _ in 0..*distance {
-                    if let Some(new_position) = &self.puzzle.go_from(self.position, &self.direction)
+                    if let Some((new_direction, new_position)) =
+                        &self.puzzle.go_from(self.position, &self.direction)
                     {
                         self.position = *new_position;
+                        self.direction = *new_direction;
                         self.visited.insert(*new_position, self.direction);
                     }
                 }
@@ -174,7 +293,18 @@ impl Puzzle {
         &self,
         (mut x, mut y): (usize, usize),
         direction: &Direction,
-    ) -> Option<(usize, usize)> {
+    ) -> Option<(Direction, (usize, usize))> {
+        if let Some(((ported_x, ported_y), ported_direction)) = self
+            .portals
+            .iter()
+            .find_map(|p| p.teleport((x, y), *direction))
+        {
+            if self.can_walk_on((ported_x, ported_y)) {
+                return Some((ported_direction, (ported_x, ported_y)));
+            } else {
+                return None;
+            }
+        }
         let (max_x, max_y) = self.dimensions_2d();
         let (target_x, target_y) = loop {
             (x, y) = match direction {
@@ -190,7 +320,7 @@ impl Puzzle {
         };
 
         if self.can_walk_on((target_x, target_y)) {
-            return Some((target_x, target_y));
+            return Some((*direction, (target_x, target_y)));
         } else {
             return None;
         }
@@ -252,7 +382,7 @@ fn rows(input: &str) -> IResult<&str, Vec<Row>> {
     separated_list1(line_ending, row)(input)
 }
 
-fn puzzle(input: &str) -> IResult<&str, Puzzle> {
+fn puzzle(input: &str, portals: Vec<Portal>) -> IResult<&str, Puzzle> {
     let (input, (the_rows, the_steps)) =
         separated_pair(rows, pair(line_ending, line_ending), steps)(input)?;
 
@@ -261,11 +391,12 @@ fn puzzle(input: &str) -> IResult<&str, Puzzle> {
         Puzzle {
             rows: the_rows,
             steps: the_steps,
+            portals,
         },
     ))
 }
 pub fn process(input: String) -> Option<usize> {
-    let (_, puzzle) = puzzle(&input).ok()?;
+    let (_, puzzle) = puzzle(&input, vec![]).ok()?;
     let mut state = State {
         direction: Direction::Right,
         position: (
@@ -285,31 +416,53 @@ pub fn process(input: String) -> Option<usize> {
     Some(1000 * (1 + state.position.1) + 4 * (1 + state.position.0) + state.direction.number())
 }
 
-pub fn process_3d(input: String) -> Option<usize> {
-    let (_, puzzle) = puzzle(&input).ok()?;
-    let (w, h) = puzzle.dimensions_2d();
-    let side_length = num::integer::gcd(w, h);
-    let sides_x = w / side_length;
-    let sides_y = h / side_length;
+pub fn process_with_portals(input: String, portals: Vec<Portal>) -> Option<usize> {
+    let (_, puzzle) = puzzle(&input, portals).ok()?;
+    // let (w, h) = puzzle.dimensions_2d();
+    // let side_length = num::integer::gcd(w, h);
+    // let sides_x = w / side_length;
+    // let sides_y = h / side_length;
+    // let mut side_set = BTreeMap::<(usize, usize), usize>::new();
+    // for y in 0..sides_y {
+    //     for row in 0..side_length {
+    //         for x in 0..sides_x {
+    //             for col in 0..side_length {
+    //                 let coord = (x * side_length + col, (y * side_length) + row);
+    //                 if let Some(portal_orientation) = puzzle.portals.iter().find_map(|p| {
+    //                     p.entrance_orientation_at(coord)
+    //                         .map(|_| p.entrance_direction)
+    //                 }) {
+    //                     print!("{portal_orientation}");
+    //                 } else if puzzle.is_void_at(coord) {
+    //                     print!(" ")
+    //                 } else {
+    //                     let side_count = side_set.len();
+    //                     let side_number = side_set.entry((x, y)).or_insert(side_count);
+    //                     print!("{}", side_number);
+    //                 }
+    //             }
+    //         }
+    //         println!("");
+    //     }
+    // }
 
-    let mut side_set = BTreeMap::<(usize, usize), usize>::new();
-    for y in 0..sides_y {
-        for row in 0..side_length {
-            for x in 0..sides_x {
-                for col in 0..side_length {
-                    if puzzle.is_void_at((x * side_length + col, (y * side_length) + row)) {
-                        print!(" ")
-                    } else {
-                        let side_count = side_set.len();
-                        let side_number = side_set.entry((x, y)).or_insert(side_count);
-                        print!("{}", side_number);
-                    }
-                }
-            }
-            println!("");
-        }
+    let mut state = State {
+        direction: Direction::Right,
+        position: (
+            puzzle.rows[0]
+                .fields
+                .iter()
+                .position(|f| f == &Field::Free)?,
+            0,
+        ),
+        puzzle: &puzzle,
+        step: 0,
+        visited: HashMap::new(),
+    };
+    for _ in 0..puzzle.steps.len() {
+        state.step();
     }
-    None
+    Some(1000 * (1 + state.position.1) + 4 * (1 + state.position.0) + state.direction.number())
 }
 
 #[cfg(test)]
@@ -333,7 +486,72 @@ mod tests {
 
 10R5L5R10L4R5L5";
 
-        assert_eq!(process(COMMANDS.to_string()), Some(6032));
-        assert_eq!(process_3d(COMMANDS.to_string()), Some(6032));
+        let portals = vec![
+            Portal {
+                entrance_start: (8, 3),
+                entrance_end: (8, 0),
+                entrance_direction: Direction::Left,
+                exit_start: (7, 4),
+                exit_end: (4, 4),
+                exit_direction: Direction::Down,
+            },
+            Portal {
+                entrance_start: (8, 0),
+                entrance_end: (11, 0),
+                entrance_direction: Direction::Up,
+                exit_start: (3, 4),
+                exit_end: (0, 4),
+                exit_direction: Direction::Down,
+            },
+            Portal {
+                entrance_start: (11, 0),
+                entrance_end: (11, 3),
+                entrance_direction: Direction::Right,
+                exit_start: (15, 11),
+                exit_end: (15, 8),
+                exit_direction: Direction::Left,
+            },
+            Portal {
+                entrance_start: (11, 4),
+                entrance_end: (11, 7),
+                entrance_direction: Direction::Right,
+                exit_start: (15, 8),
+                exit_end: (12, 8),
+                exit_direction: Direction::Down,
+            },
+            Portal {
+                entrance_start: (0, 4),
+                entrance_end: (0, 7),
+                entrance_direction: Direction::Left,
+                exit_start: (15, 11),
+                exit_end: (12, 11),
+                exit_direction: Direction::Up,
+            },
+            Portal {
+                entrance_start: (0, 7),
+                entrance_end: (4, 7),
+                entrance_direction: Direction::Down,
+                exit_start: (11, 11),
+                exit_end: (8, 11),
+                exit_direction: Direction::Up,
+            },
+            Portal {
+                entrance_start: (4, 7),
+                entrance_end: (7, 7),
+                entrance_direction: Direction::Down,
+                exit_start: (8, 11),
+                exit_end: (8, 8),
+                exit_direction: Direction::Right,
+            },
+        ]
+        .into_iter()
+        .flat_map(|p| [p.inverse(), p])
+        .collect();
+
+        // assert_eq!(process(COMMANDS.to_string()), Some(6032));
+        assert_eq!(
+            process_with_portals(COMMANDS.to_string(), portals),
+            Some(5031)
+        );
     }
 }
