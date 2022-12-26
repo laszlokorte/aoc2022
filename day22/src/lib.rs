@@ -435,12 +435,244 @@ impl std::fmt::Display for CubeColors {
     }
 }
 
+pub struct CubeNet {
+    node_degrees: HashMap<(usize, usize), usize>,
+    color_degrees: HashMap<CubeColors, usize>,
+    corners: BTreeMap<(usize, usize), Option<CubeColors>>,
+    edges: HashMap<(usize, usize), BTreeSet<(usize, usize)>>,
+    unused_colors: VecDeque<CubeColors>,
+}
+
+impl CubeNet {
+    fn new() -> Self {
+        Self {
+            node_degrees: HashMap::<(usize, usize), usize>::new(),
+            color_degrees: HashMap::<CubeColors, usize>::new(),
+            corners: BTreeMap::new(),
+            edges: HashMap::new(),
+            unused_colors: [
+                CubeColors::Red,
+                CubeColors::Green,
+                CubeColors::Blue,
+                CubeColors::White,
+                CubeColors::Cyan,
+                CubeColors::Magenta,
+                CubeColors::Yellow,
+                CubeColors::Black,
+            ]
+            .into(),
+        }
+    }
+
+    pub fn to_graphviz(&self) {
+        for ((cx, cy), color) in &self.corners {
+            println!(
+                "\"{cx},{cy}\"[pos=\"{cx},{cy}\",style=filled,fillcolor={}];",
+                color.unwrap_or(CubeColors::Gray)
+            );
+        }
+        for ((ax, ay), nei) in &self.edges {
+            for (bx, by) in nei {
+                println!("\"{ax},{ay}\"->\"{bx},{by}\";");
+            }
+        }
+    }
+
+    fn set_color(&mut self, node: (usize, usize), color: Option<CubeColors>) {
+        if let Some(node_color) = self.corners.get_mut(&node) {
+            if let Some(old_color) = node_color && let Some(node_degree) = self.node_degrees.get(&node){
+                *self.color_degrees.entry(*old_color).or_insert(0) += node_degree;
+            }
+            *node_color = color;
+            if let Some(new_color) = color && let Some(node_degree) =self.node_degrees.get(&node) {
+                *self.color_degrees.entry(new_color).or_insert(0) += node_degree;
+            }
+        }
+    }
+
+    fn set_color_same_as(&mut self, node: (usize, usize), other_node: (usize, usize)) {
+        if let Some(&color) = self.corners.get(&other_node) {
+            self.set_color(node, color);
+        }
+    }
+
+    fn add_face(&mut self, [a, b, c, d]: [(usize, usize); 4]) {
+        self.corners.insert(a, None);
+        self.corners.insert(b, None);
+        self.corners.insert(c, None);
+        self.corners.insert(d, None);
+        *self.node_degrees.entry(a).or_insert(0) += 1;
+        *self.node_degrees.entry(b).or_insert(0) += 1;
+        *self.node_degrees.entry(c).or_insert(0) += 1;
+        *self.node_degrees.entry(d).or_insert(0) += 1;
+
+        let _ = self.edges.try_insert(a, BTreeSet::new());
+        let _ = self.edges.try_insert(b, BTreeSet::new());
+        let _ = self.edges.try_insert(c, BTreeSet::new());
+        let _ = self.edges.try_insert(d, BTreeSet::new());
+        let [edges_a, edges_b, edges_c, edges_d] =
+            self.edges.get_many_mut([&a, &b, &c, &d]).unwrap();
+
+        edges_a.insert(b);
+        edges_b.insert(a);
+        edges_b.insert(c);
+        edges_c.insert(b);
+        edges_c.insert(d);
+        edges_d.insert(c);
+        edges_d.insert(a);
+        edges_a.insert(d);
+    }
+
+    fn assign_new_color(&mut self, node: (usize, usize)) {
+        let color = self.unused_colors.pop_front();
+        self.set_color(node, color);
+    }
+
+    fn set_initial_colors(&mut self) {
+        let degrees = self.node_degrees.clone();
+        for (&node, deg) in &degrees {
+            match deg {
+                3 | 2 => {
+                    let color = self.unused_colors.pop_front();
+                    self.set_color(node, color);
+                }
+                1 => {
+                    continue;
+                }
+                _ => panic!("unexpected node degree"),
+            }
+        }
+    }
+
+    fn set_diagonal_colors(&mut self) {
+        let sides_y = self.corners.keys().map(|c| c.1).max().unwrap_or(0);
+        let sides_x = self.corners.keys().map(|c| c.0).max().unwrap_or(0);
+        'try_extend_color: loop {
+            let mut double_uncolored_corners = HashMap::<(usize, usize), usize>::new();
+            for y in 0..sides_y {
+                for x in 0..sides_x {
+                    let local_corners = [(x, y), (x, y + 1), (x + 1, y + 1), (x + 1, y)];
+                    let void_corners = local_corners
+                        .iter()
+                        .filter(|c| !self.corners.contains_key(c))
+                        .count();
+                    let uncolored_corners = local_corners.iter().filter(|c| {
+                        self.corners
+                            .get(c)
+                            .map(|col| col.is_none())
+                            .unwrap_or(false)
+                    });
+                    let colored_l_corner = local_corners
+                        .iter()
+                        .filter(|c| self.corners.get(c).map(|c| c.is_some()).unwrap_or(true))
+                        .filter(|c| self.edges.get(c).map(|e| e.len() != 4).unwrap_or(false))
+                        .next();
+
+                    if void_corners == 1 && let Some(&uncolored) = uncolored_corners.clone().next() && let Some(&colored) = colored_l_corner {
+                    self.set_color_same_as(uncolored, colored);
+                } else if void_corners == 1 && colored_l_corner.is_none()  && uncolored_corners.clone().count() == 2 {
+                    for &dbl in uncolored_corners {
+                        *double_uncolored_corners.entry(dbl).or_insert(0) += 1;
+                    }
+                }
+                }
+            }
+
+            if let Some(&double_gray) =
+                double_uncolored_corners
+                    .iter()
+                    .find_map(|(c, &count)| if count > 0 { Some(c) } else { None })
+            {
+                self.assign_new_color(double_gray);
+                continue 'try_extend_color;
+            }
+            break;
+        }
+    }
+
+    fn set_distant_colors(&mut self) {
+        'outer: loop {
+            let Some((corn, new_color)) = ('find_color: loop {
+            let mut count_gray = 0;
+            for (corner, color) in &self.corners {
+                if color.is_none() {
+
+                    let neighbours = self.edges.get(corner).unwrap();
+                    let neigbour_colors = neighbours.iter().flat_map(|n| self.corners.get(n));
+                    let nodes_of_color = neigbour_colors.flat_map(|&c| {
+                        self.corners
+                            .iter()
+                            .filter_map(move |(n, &nc)| if c.is_some() && nc == c { Some(n) } else { None })
+                    });
+                    let nodes_touching_color: BTreeSet<_> = nodes_of_color
+                        .clone()
+                        .flat_map(|n| {
+                            self.edges
+                                .get(n)
+                                .unwrap()
+                                .iter()
+                                .filter(|c| self.corners.get(c).is_some())
+                        })
+                        .filter(|n| {
+                            if *n == corner {
+                                return false;
+                            }
+                            let Some(col) = self.corners.get(n).unwrap() else {
+                                return false;
+                            };
+
+                            let total_degree = self.color_degrees.get(col).unwrap_or(&0);
+                            total_degree < &3
+                        })
+                        .collect();
+
+                    if nodes_touching_color.len() == 1 {
+                        let touching_node = *nodes_touching_color.iter().next().unwrap();
+                        let new_color = *self.corners.get(touching_node).unwrap();
+                        break 'find_color Some((corner, new_color));
+                    }
+                    count_gray += 1;
+                }
+            }
+            if count_gray == 1 {
+                let gray_corner = *self.corners.iter().find_map(|(corn, col)| if col.is_none() {Some(corn)} else {None}).unwrap();
+                let color_left = self.color_degrees.iter().find_map(|(col,deg)| if deg != &3 {Some(col)} else {None}).cloned();
+                self.set_color(gray_corner, color_left);
+            }
+            break 'find_color None;
+        }) else {
+            break 'outer;
+        };
+
+            self.set_color(*corn, new_color);
+        }
+    }
+
+    fn set_leftover_colors(&mut self) {
+        if self.unused_colors.len() == 1 {
+            let corners_cloned = self.corners.clone();
+            let grays = corners_cloned
+                .iter()
+                .filter_map(|(corn, col)| if col.is_none() { Some(corn) } else { None })
+                .collect::<Vec<_>>();
+            if grays.len() == 3 {
+                let remaining_color = self.unused_colors.pop_front();
+                for node in grays {
+                    self.corners.insert(*node, remaining_color);
+                }
+            }
+        }
+    }
+}
+
 fn detect_portals(puzzle: &Puzzle) -> Option<Vec<Portal>> {
     let (w, h) = puzzle.dimensions_2d();
     let side_length = num::integer::gcd(w, h);
     let sides_x = w / side_length;
     let sides_y = h / side_length;
     let mut side_set = BTreeMap::<(usize, usize), usize>::new();
+    let mut net = CubeNet::new();
+
     for y in 0..sides_y {
         for row in 0..side_length {
             for x in 0..sides_x {
@@ -455,212 +687,23 @@ fn detect_portals(puzzle: &Puzzle) -> Option<Vec<Portal>> {
         }
     }
 
-    let mut node_degrees = HashMap::<(usize, usize), usize>::new();
-    let mut color_degrees = HashMap::<CubeColors, usize>::new();
-    let mut corners: BTreeMap<(usize, usize), Option<CubeColors>> = BTreeMap::new();
-    let mut edges: HashMap<(usize, usize), BTreeSet<(usize, usize)>> = HashMap::new();
     for &(x, y) in side_set.keys() {
         let a = (x, y);
         let b = (x, y + 1);
         let c = (x + 1, y + 1);
         let d = (x + 1, y);
-        corners.insert(a, None);
-        corners.insert(b, None);
-        corners.insert(c, None);
-        corners.insert(d, None);
-        *node_degrees.entry(a).or_insert(0) += 1;
-        *node_degrees.entry(b).or_insert(0) += 1;
-        *node_degrees.entry(c).or_insert(0) += 1;
-        *node_degrees.entry(d).or_insert(0) += 1;
-
-        let _ = edges.try_insert(a, BTreeSet::new());
-        let _ = edges.try_insert(b, BTreeSet::new());
-        let _ = edges.try_insert(c, BTreeSet::new());
-        let _ = edges.try_insert(d, BTreeSet::new());
-        let [edges_a, edges_b, edges_c, edges_d] = edges.get_many_mut([&a, &b, &c, &d])?;
-
-        edges_a.insert(b);
-        edges_b.insert(a);
-        edges_b.insert(c);
-        edges_c.insert(b);
-        edges_c.insert(d);
-        edges_d.insert(c);
-        edges_d.insert(a);
-        edges_a.insert(d);
+        net.add_face([a, b, c, d]);
     }
 
-    let mut unused_colors: VecDeque<CubeColors> = [
-        CubeColors::Red,
-        CubeColors::Green,
-        CubeColors::Blue,
-        CubeColors::White,
-        CubeColors::Cyan,
-        CubeColors::Magenta,
-        CubeColors::Yellow,
-        CubeColors::Black,
-    ]
-    .into_iter()
-    .collect();
-
-    for (node, neighbours) in &edges {
-        match neighbours.len() {
-            4 | 3 => {
-                let color = unused_colors.pop_front();
-                *corners.get_mut(node)? = color;
-                *color_degrees.entry(color?).or_insert(0) += node_degrees.get(node)?;
-            }
-            2 => {
-                continue;
-            }
-            _ => panic!("unexpected node degree"),
-        }
-    }
-    'try_extend_color: loop {
-        let mut double_uncolored_corners = HashMap::<(usize, usize), usize>::new();
-        for y in 0..sides_y {
-            for x in 0..sides_x {
-                let local_corners = [(x, y), (x, y + 1), (x + 1, y + 1), (x + 1, y)];
-                let void_corners = local_corners
-                    .iter()
-                    .filter(|c| !corners.contains_key(c))
-                    .count();
-                let uncolored_corners = local_corners
-                    .iter()
-                    .filter(|c| corners.get(c).map(|col| col.is_none()).unwrap_or(false));
-                let colored_l_corner = local_corners
-                    .iter()
-                    .filter(|c| corners.get(c).map(|c| c.is_some()).unwrap_or(true))
-                    .filter(|c| edges.get(c).map(|e| e.len() != 4).unwrap_or(false))
-                    .next();
-
-                if void_corners == 1 && let Some(uncolored) = uncolored_corners.clone().next() && let Some(colored) = colored_l_corner {
-                    let color = *corners.get(colored)?;
-                    *corners.get_mut(uncolored)? = color;
-                    *color_degrees.entry(color?).or_insert(0) += node_degrees.get(uncolored)?;
-                } else if void_corners == 1 && colored_l_corner.is_none()  && uncolored_corners.clone().count() == 2 {
-                    for &dbl in uncolored_corners {
-                        *double_uncolored_corners.entry(dbl).or_insert(0) += 1;
-                    }
-                }
-            }
-        }
-
-        if let Some(double_gray) =
-            double_uncolored_corners
-                .iter()
-                .find_map(|(c, &count)| if count > 0 { Some(c) } else { None })
-        {
-            let color = unused_colors.pop_front();
-            corners.insert(*double_gray, color);
-            *color_degrees.entry(color?).or_insert(0) += node_degrees.get(double_gray)?;
-            continue 'try_extend_color;
-        }
-        break;
-    }
-
-    'outer: loop {
-        let Some((corn, new_color)) = ('find_color: loop {
-            let mut count_gray = 0;
-            for (corner, color) in &corners {
-                if color.is_none() {
-
-                    let neighbours = edges.get(corner)?;
-                    let neigbour_colors = neighbours.iter().flat_map(|n| corners.get(n));
-                    let nodes_of_color = neigbour_colors.flat_map(|&c| {
-                        corners
-                            .iter()
-                            .filter_map(move |(n, &nc)| if c.is_some() && nc == c { Some(n) } else { None })
-                    });
-                    let nodes_touching_color: BTreeSet<_> = nodes_of_color
-                        .clone()
-                        .flat_map(|n| {
-                            edges
-                                .get(n)
-                                .unwrap()
-                                .iter()
-                                .filter(|c| corners.get(c).is_some())
-                        })
-                        .filter(|n| {
-                            if *n == corner {
-                                return false;
-                            }
-                            let Some(col) = corners.get(n).unwrap() else {
-                                return false;
-                            };
-
-                            // dbg!(col);
-
-                            // let total_degree: usize = edges
-                            //     .iter()
-                            //     .filter_map(|(n, nei)| {
-                            //         if corners[n] == *col {
-                            //             Some(nei.len())
-                            //         } else {
-                            //             None
-                            //         }
-                            //     })
-                            //     .sum();
-                            let total_degree = color_degrees.get(col).unwrap_or(&0);
-                            total_degree < &3
-                        })
-                        .collect();
-
-                    if nodes_touching_color.len() == 1 {
-                        let touching_node = *nodes_touching_color.iter().next()?;
-                        let new_color = *corners.get(touching_node)?;
-        // println!("{corner:?} gets color {new_color:?}, via {touching_node:?}");
-                        break 'find_color Some((corner, new_color));
-                    }
-                    count_gray += 1;
-                }
-            }
-            if count_gray == 1 {
-                let gray_corner = *corners.iter().find_map(|(corn, col)| if col.is_none() {Some(corn)} else {None})?;
-                let color_left = color_degrees.iter().find_map(|(col,deg)| if deg != &3 {Some(col)} else {None}).cloned();
-                corners.insert(gray_corner, color_left);
-
-        *color_degrees.entry(color_left?).or_insert(0) += node_degrees.get(&gray_corner)?;
-
-            }
-                break 'find_color None;
-        }) else {
-            break 'outer;
-        };
-        let cc = corn.clone();
-
-        corners.insert(*corn, new_color);
-        *color_degrees.entry(new_color?).or_insert(0) += node_degrees.get(&cc)?;
-    }
-    // for ((cx, cy), color) in &corners {
-    //     println!(
-    //         "\"{cx},{cy}\"[pos=\"{cx},{cy}\",style=filled,fillcolor={}];",
-    //         color.unwrap_or(CubeColors::Gray)
-    //     );
-    // }
-    // for ((ax, ay), nei) in &edges {
-    //     for (bx, by) in nei {
-    //         println!("\"{ax},{ay}\"->\"{bx},{by}\";");
-    //     }
-    // }
-    if unused_colors.len() == 1 {
-        let corners_cloned = corners.clone();
-        let grays = corners_cloned
-            .iter()
-            .filter_map(|(corn, col)| if col.is_none() { Some(corn) } else { None })
-            .collect::<Vec<_>>();
-        if grays.len() == 3 {
-            let remaining_color = unused_colors.pop_front();
-            for node in grays {
-                corners.insert(*node, remaining_color);
-            }
-        }
-    }
+    net.set_initial_colors();
+    net.set_diagonal_colors();
+    net.set_distant_colors();
+    net.set_leftover_colors();
 
     let mut portals = Vec::<_>::new();
     let mut colored_edges =
         HashMap::<(CubeColors, CubeColors), (Direction, (usize, usize), (usize, usize))>::new();
     for &(x, y) in side_set.keys() {
-        // dbg!(x, y);
         let a = (x, y);
         let b = (x, y + 1);
         let c = (x + 1, y + 1);
@@ -674,15 +717,10 @@ fn detect_portals(puzzle: &Puzzle) -> Option<Vec<Portal>> {
         ];
 
         for (from, to, edge_direction) in ccw_edges {
-            let from_color = *corners.get(&from)?;
-            let to_color = *corners.get(&to)?;
+            let from_color = *net.corners.get(&from)?;
+            let to_color = *net.corners.get(&to)?;
             let edge_color = (from_color?, to_color?);
             let back_edge = (edge_color.1, edge_color.0);
-            // dbg!(edge_color);
-            // if let Some((other_from, other_to)) = colored_edges.remove(&edge_color) {
-            // dbg!("portal detected", (from, to), (other_from, other_to));
-            // println!("PORTAL CREATED {edge_color:?}");
-            // } else
             if let Some((other_edge_direction, other_to, other_from)) =
                 colored_edges.remove(&back_edge)
             {
@@ -716,7 +754,6 @@ fn detect_portals(puzzle: &Puzzle) -> Option<Vec<Portal>> {
                 let other_end_x_sign = if other_to.0 > other_from.0 { -1 } else { 0 };
                 let other_end_y_sign = if other_to.1 > other_from.1 { -1 } else { 0 };
 
-                // dbg!("portal detected", (from, to), (other_from, other_to));
                 let portal = Portal {
                     entrance_start: (
                         (start_x_sign + from.0 as isize * side_length as isize + offset.0) as usize,
@@ -745,12 +782,9 @@ fn detect_portals(puzzle: &Puzzle) -> Option<Vec<Portal>> {
                     ),
                     exit_direction,
                 };
-                // println!("PORTAL CREATED: {:?}", portal);
-                // dbg!(portal);
                 portals.push(portal);
                 portals.push(portal.inverse());
             } else {
-                // println!("edge colors not found yet ({edge_color:?})");
                 colored_edges.insert(edge_color, (edge_direction, from, to));
                 colored_edges.insert(back_edge, (edge_direction.opposite(), to, from));
             }
