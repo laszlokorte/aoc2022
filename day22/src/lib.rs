@@ -372,7 +372,7 @@ fn rows(input: &str) -> IResult<&str, Vec<Row>> {
     separated_list1(line_ending, row)(input)
 }
 
-fn puzzle(input: &str, portals: Vec<Portal>) -> IResult<&str, Puzzle> {
+fn puzzle(input: &str) -> IResult<&str, Puzzle> {
     let (input, (the_rows, the_steps)) =
         separated_pair(rows, pair(line_ending, line_ending), steps)(input)?;
 
@@ -381,12 +381,12 @@ fn puzzle(input: &str, portals: Vec<Portal>) -> IResult<&str, Puzzle> {
         Puzzle {
             rows: the_rows,
             steps: the_steps,
-            portals,
+            portals: vec![],
         },
     ))
 }
 pub fn process(input: String) -> Option<usize> {
-    let (_, puzzle) = puzzle(&input, vec![]).ok()?;
+    let (_, puzzle) = puzzle(&input).ok()?;
     let mut state = State {
         direction: Direction::Right,
         position: (
@@ -408,6 +408,7 @@ pub fn process(input: String) -> Option<usize> {
 
 #[derive(Hash, Debug, PartialEq, Eq, Copy, Clone)]
 enum CubeColors {
+    Gray,
     Red,
     Green,
     Blue,
@@ -416,21 +417,20 @@ enum CubeColors {
     Cyan,
     Yellow,
     Black,
-    Gray,
 }
 
 impl std::fmt::Display for CubeColors {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self {
-            CubeColors::Red => write!(f, "red "),
-            CubeColors::Green => write!(f, "green "),
-            CubeColors::Blue => write!(f, "blue "),
-            CubeColors::White => write!(f, "white "),
-            CubeColors::Magenta => write!(f, "magenta "),
-            CubeColors::Cyan => write!(f, "cyan "),
-            CubeColors::Yellow => write!(f, "yellow "),
-            CubeColors::Black => write!(f, "black "),
-            CubeColors::Gray => write!(f, "gray "),
+            CubeColors::Red => write!(f, "red"),
+            CubeColors::Green => write!(f, "green"),
+            CubeColors::Blue => write!(f, "blue"),
+            CubeColors::White => write!(f, "white"),
+            CubeColors::Magenta => write!(f, "magenta"),
+            CubeColors::Cyan => write!(f, "cyan"),
+            CubeColors::Yellow => write!(f, "yellow"),
+            CubeColors::Black => write!(f, "black"),
+            CubeColors::Gray => write!(f, "gray"),
         }
     }
 }
@@ -446,17 +446,9 @@ fn detect_portals(puzzle: &Puzzle) -> Option<Vec<Portal>> {
             for x in 0..sides_x {
                 for col in 0..side_length {
                     let coord = (x * side_length + col, (y * side_length) + row);
-                    if let Some(portal_orientation) = puzzle.portals.iter().find_map(|p| {
-                        p.entrance_orientation_at(coord)
-                            .map(|_| p.entrance_direction)
-                    }) {
-                        print!("{portal_orientation}");
-                    } else if puzzle.is_void_at(coord) {
-                        print!(" ")
-                    } else {
+                    if !puzzle.is_void_at(coord) {
                         let side_count = side_set.len();
-                        let side_number = side_set.entry((x, y)).or_insert(side_count);
-                        print!("{}", side_number);
+                        side_set.entry((x, y)).or_insert(side_count);
                     }
                 }
             }
@@ -577,7 +569,7 @@ fn detect_portals(puzzle: &Puzzle) -> Option<Vec<Portal>> {
                     let nodes_of_color = neigbour_colors.flat_map(|&c| {
                         corners
                             .iter()
-                            .filter_map(move |(n, &nc)| if nc == c { Some(n) } else { None })
+                            .filter_map(move |(n, &nc)| if c.is_some() && nc == c { Some(n) } else { None })
                     });
                     let nodes_touching_color: BTreeSet<_> = nodes_of_color
                         .clone()
@@ -596,6 +588,8 @@ fn detect_portals(puzzle: &Puzzle) -> Option<Vec<Portal>> {
                                 return false;
                             };
 
+                            // dbg!(col);
+
                             // let total_degree: usize = edges
                             //     .iter()
                             //     .filter_map(|(n, nei)| {
@@ -612,7 +606,9 @@ fn detect_portals(puzzle: &Puzzle) -> Option<Vec<Portal>> {
                         .collect();
 
                     if nodes_touching_color.len() == 1 {
-                        let new_color = *corners.get(*nodes_touching_color.iter().next()?)?;
+                        let touching_node = *nodes_touching_color.iter().next()?;
+                        let new_color = *corners.get(touching_node)?;
+        // println!("{corner:?} gets color {new_color:?}, via {touching_node:?}");
                         break 'find_color Some((corner, new_color));
                     }
                     count_gray += 1;
@@ -631,9 +627,21 @@ fn detect_portals(puzzle: &Puzzle) -> Option<Vec<Portal>> {
             break 'outer;
         };
         let cc = corn.clone();
+
         corners.insert(*corn, new_color);
         *color_degrees.entry(new_color?).or_insert(0) += node_degrees.get(&cc)?;
     }
+    // for ((cx, cy), color) in &corners {
+    //     println!(
+    //         "\"{cx},{cy}\"[pos=\"{cx},{cy}\",style=filled,fillcolor={}];",
+    //         color.unwrap_or(CubeColors::Gray)
+    //     );
+    // }
+    // for ((ax, ay), nei) in &edges {
+    //     for (bx, by) in nei {
+    //         println!("\"{ax},{ay}\"->\"{bx},{by}\";");
+    //     }
+    // }
     if unused_colors.len() == 1 {
         let corners_cloned = corners.clone();
         let grays = corners_cloned
@@ -648,29 +656,24 @@ fn detect_portals(puzzle: &Puzzle) -> Option<Vec<Portal>> {
         }
     }
 
-    for ((cx, cy), color) in &corners {
-        println!(
-            "\"{cx},{cy}\"[pos=\"{cx},{cy}\",style=filled,fillcolor={}];",
-            color.unwrap_or(CubeColors::Gray)
-        );
-    }
-    for ((ax, ay), nei) in &edges {
-        for (bx, by) in nei {
-            println!("\"{ax},{ay}\"->\"{bx},{by}\";");
-        }
-    }
-
+    let mut portals = Vec::<_>::new();
     let mut colored_edges =
-        HashMap::<(CubeColors, CubeColors), ((usize, usize), (usize, usize))>::new();
+        HashMap::<(CubeColors, CubeColors), (Direction, (usize, usize), (usize, usize))>::new();
     for &(x, y) in side_set.keys() {
+        // dbg!(x, y);
         let a = (x, y);
         let b = (x, y + 1);
         let c = (x + 1, y + 1);
         let d = (x + 1, y);
 
-        let cw_edges = [(a, b), (b, c), (c, d), (d, a)];
+        let ccw_edges = [
+            (a, b, Direction::Down),
+            (b, c, Direction::Right),
+            (c, d, Direction::Up),
+            (d, a, Direction::Left),
+        ];
 
-        for (from, to) in cw_edges {
+        for (from, to, edge_direction) in ccw_edges {
             let from_color = *corners.get(&from)?;
             let to_color = *corners.get(&to)?;
             let edge_color = (from_color?, to_color?);
@@ -680,24 +683,115 @@ fn detect_portals(puzzle: &Puzzle) -> Option<Vec<Portal>> {
             // dbg!("portal detected", (from, to), (other_from, other_to));
             // println!("PORTAL CREATED {edge_color:?}");
             // } else
-            if let Some((other_from, other_to)) = colored_edges.remove(&back_edge) {
+            if let Some((other_edge_direction, other_to, other_from)) =
+                colored_edges.remove(&back_edge)
+            {
+                if (other_to, other_from) == (to, from) {
+                    continue;
+                }
+
+                let entrance_direction = edge_direction.turn_cw();
+                let exit_direction = other_edge_direction.turn_ccw();
+
+                let offset: (isize, isize) = match entrance_direction {
+                    Direction::Right => (-1, 0),
+                    Direction::Down => (0, -1),
+                    Direction::Left => (0, 0),
+                    Direction::Up => (0, 0),
+                };
+
+                let offset_other: (isize, isize) = match exit_direction {
+                    Direction::Right => (0, 0),
+                    Direction::Down => (0, 0),
+                    Direction::Left => (-1, 0),
+                    Direction::Up => (0, -1),
+                };
+                let start_x_sign = if from.0 > to.0 { -1 } else { 0 };
+                let start_y_sign = if from.1 > to.1 { -1 } else { 0 };
+                let end_x_sign = if to.0 > from.0 { -1 } else { 0 };
+                let end_y_sign = if to.1 > from.1 { -1 } else { 0 };
+
+                let other_start_x_sign = if other_from.0 > other_to.0 { -1 } else { 0 };
+                let other_start_y_sign = if other_from.1 > other_to.1 { -1 } else { 0 };
+                let other_end_x_sign = if other_to.0 > other_from.0 { -1 } else { 0 };
+                let other_end_y_sign = if other_to.1 > other_from.1 { -1 } else { 0 };
+
                 // dbg!("portal detected", (from, to), (other_from, other_to));
-                println!("PORTAL CREATED");
+                let portal = Portal {
+                    entrance_start: (
+                        (start_x_sign + from.0 as isize * side_length as isize + offset.0) as usize,
+                        (start_y_sign + from.1 as isize * side_length as isize + offset.1) as usize,
+                    ),
+                    entrance_end: (
+                        (end_x_sign + to.0 as isize * side_length as isize + offset.0) as usize,
+                        (end_y_sign + to.1 as isize * side_length as isize + offset.1) as usize,
+                    ),
+                    entrance_direction,
+                    exit_start: (
+                        (other_start_x_sign
+                            + other_from.0 as isize * side_length as isize
+                            + offset_other.0) as usize,
+                        (other_start_y_sign
+                            + other_from.1 as isize * side_length as isize
+                            + offset_other.1) as usize,
+                    ),
+                    exit_end: (
+                        (other_end_x_sign
+                            + other_to.0 as isize * side_length as isize
+                            + offset_other.0) as usize,
+                        (other_end_y_sign
+                            + other_to.1 as isize * side_length as isize
+                            + offset_other.1) as usize,
+                    ),
+                    exit_direction,
+                };
+                // println!("PORTAL CREATED: {:?}", portal);
+                // dbg!(portal);
+                portals.push(portal);
+                portals.push(portal.inverse());
             } else {
-                colored_edges.insert(edge_color, (from, to));
-                colored_edges.insert(back_edge, (to, from));
+                // println!("edge colors not found yet ({edge_color:?})");
+                colored_edges.insert(edge_color, (edge_direction, from, to));
+                colored_edges.insert(back_edge, (edge_direction.opposite(), to, from));
             }
         }
     }
 
-    None
+    // for y in 0..sides_y {
+    //     for row in 0..side_length {
+    //         for x in 0..sides_x {
+    //             for col in 0..side_length {
+    //                 let coord = (x * side_length + col, (y * side_length) + row);
+    //                 if let Some(portal_orientation) = portals.iter().find_map(|p| {
+    //                     p.entrance_orientation_at(coord)
+    //                         .map(|_| p.entrance_direction)
+    //                 }) {
+    //                     print!("{portal_orientation}");
+    //                 } else if puzzle.is_void_at(coord) {
+    //                     print!(" ")
+    //                 } else {
+    //                     let side_number = side_set.get(&(x, y))?;
+    //                     print!("{}", side_number);
+    //                 }
+    //             }
+    //         }
+    //         println!("");
+    //     }
+    // }
+    // dbg!(&portals);
+    return Some(portals);
 }
 
-pub fn process_with_portals(input: String, portals: Vec<Portal>) -> Option<usize> {
-    let (_, puzzle) = puzzle(&input, portals).ok()?;
+pub fn process_with_portals(input: String) -> Option<usize> {
+    let (_, puzzle) = puzzle(&input).ok()?;
 
-    let auto_portals = detect_portals(&puzzle);
+    let auto_portals = detect_portals(&puzzle)?;
 
+    let puzzle = Puzzle {
+        rows: puzzle.rows,
+        steps: puzzle.steps,
+        portals: auto_portals,
+    };
     let mut state = State {
         direction: Direction::Right,
         position: (
@@ -738,72 +832,7 @@ mod tests {
 
 10R5L5R10L4R5L5";
 
-        let portals = vec![
-            Portal {
-                entrance_start: (8, 3),
-                entrance_end: (8, 0),
-                entrance_direction: Direction::Left,
-                exit_start: (7, 4),
-                exit_end: (4, 4),
-                exit_direction: Direction::Down,
-            },
-            Portal {
-                entrance_start: (8, 0),
-                entrance_end: (11, 0),
-                entrance_direction: Direction::Up,
-                exit_start: (3, 4),
-                exit_end: (0, 4),
-                exit_direction: Direction::Down,
-            },
-            Portal {
-                entrance_start: (11, 0),
-                entrance_end: (11, 3),
-                entrance_direction: Direction::Right,
-                exit_start: (15, 11),
-                exit_end: (15, 8),
-                exit_direction: Direction::Left,
-            },
-            Portal {
-                entrance_start: (11, 4),
-                entrance_end: (11, 7),
-                entrance_direction: Direction::Right,
-                exit_start: (15, 8),
-                exit_end: (12, 8),
-                exit_direction: Direction::Down,
-            },
-            Portal {
-                entrance_start: (0, 4),
-                entrance_end: (0, 7),
-                entrance_direction: Direction::Left,
-                exit_start: (15, 11),
-                exit_end: (12, 11),
-                exit_direction: Direction::Up,
-            },
-            Portal {
-                entrance_start: (0, 7),
-                entrance_end: (4, 7),
-                entrance_direction: Direction::Down,
-                exit_start: (11, 11),
-                exit_end: (8, 11),
-                exit_direction: Direction::Up,
-            },
-            Portal {
-                entrance_start: (4, 7),
-                entrance_end: (7, 7),
-                entrance_direction: Direction::Down,
-                exit_start: (8, 11),
-                exit_end: (8, 8),
-                exit_direction: Direction::Right,
-            },
-        ]
-        .into_iter()
-        .flat_map(|p| [p.inverse(), p])
-        .collect();
-
-        // assert_eq!(process(COMMANDS.to_string()), Some(6032));
-        assert_eq!(
-            process_with_portals(COMMANDS.to_string(), portals),
-            Some(5031)
-        );
+        assert_eq!(process(COMMANDS.to_string()), Some(6032));
+        assert_eq!(process_with_portals(COMMANDS.to_string()), Some(5031));
     }
 }
