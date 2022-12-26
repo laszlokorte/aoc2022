@@ -592,19 +592,22 @@ fn detect_portals(puzzle: &Puzzle) -> Option<Vec<Portal>> {
                             if *n == corner {
                                 return false;
                             }
-                            let col = corners.get(n).unwrap();
+                            let Some(col) = corners.get(n).unwrap() else {
+                                return false;
+                            };
 
-                            let total_degree: usize = edges
-                                .iter()
-                                .filter_map(|(n, nei)| {
-                                    if corners[n] == *col {
-                                        Some(nei.len())
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .sum();
-                            total_degree < 4
+                            // let total_degree: usize = edges
+                            //     .iter()
+                            //     .filter_map(|(n, nei)| {
+                            //         if corners[n] == *col {
+                            //             Some(nei.len())
+                            //         } else {
+                            //             None
+                            //         }
+                            //     })
+                            //     .sum();
+                            let total_degree = color_degrees.get(col).unwrap_or(&0);
+                            total_degree < &3
                         })
                         .collect();
 
@@ -654,6 +657,36 @@ fn detect_portals(puzzle: &Puzzle) -> Option<Vec<Portal>> {
     for ((ax, ay), nei) in &edges {
         for (bx, by) in nei {
             println!("\"{ax},{ay}\"->\"{bx},{by}\";");
+        }
+    }
+
+    let mut colored_edges =
+        HashMap::<(CubeColors, CubeColors), ((usize, usize), (usize, usize))>::new();
+    for &(x, y) in side_set.keys() {
+        let a = (x, y);
+        let b = (x, y + 1);
+        let c = (x + 1, y + 1);
+        let d = (x + 1, y);
+
+        let cw_edges = [(a, b), (b, c), (c, d), (d, a)];
+
+        for (from, to) in cw_edges {
+            let from_color = *corners.get(&from)?;
+            let to_color = *corners.get(&to)?;
+            let edge_color = (from_color?, to_color?);
+            let back_edge = (edge_color.1, edge_color.0);
+            // dbg!(edge_color);
+            // if let Some((other_from, other_to)) = colored_edges.remove(&edge_color) {
+            // dbg!("portal detected", (from, to), (other_from, other_to));
+            // println!("PORTAL CREATED {edge_color:?}");
+            // } else
+            if let Some((other_from, other_to)) = colored_edges.remove(&back_edge) {
+                // dbg!("portal detected", (from, to), (other_from, other_to));
+                println!("PORTAL CREATED");
+            } else {
+                colored_edges.insert(edge_color, (from, to));
+                colored_edges.insert(back_edge, (to, from));
+            }
         }
     }
 
