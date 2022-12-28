@@ -66,17 +66,18 @@ impl Landscape {
                 .or_insert(Proposition::Single((x, y)));
         }
         if propositions.is_empty() {
-            return false;
-        }
-
-        for (new_pos, proposition) in &propositions {
-            if let Proposition::Single(old_pos) = proposition {
-                self.elves.remove(old_pos);
-                self.elves.insert(*new_pos);
+            false
+        } else {
+            for (new_pos, proposition) in &propositions {
+                if let Proposition::Single(old_pos) = proposition {
+                    self.elves.remove(old_pos);
+                    self.elves.insert(*new_pos);
+                }
             }
+            propositions.clear();
+    
+            true
         }
-        propositions.clear();
-        return true;
     }
 
     fn count_empty(&self) -> isize {
@@ -86,7 +87,8 @@ impl Landscape {
         let maxy = *self.elves.iter().map(|(_, y)| y).max().unwrap_or(&0);
         let width = maxx - minx + 1;
         let height = maxy - miny + 1;
-        return width * height - self.elves.len() as isize;
+
+        width * height - self.elves.len() as isize
     }
 }
 
@@ -104,9 +106,9 @@ impl std::fmt::Display for Landscape {
                     let _ = write!(f, ".");
                 }
             }
-            let _ = writeln!(f, "");
+            let _ = writeln!(f);
         }
-        writeln!(f, "")
+        writeln!(f)
     }
 }
 pub fn process(input: String, round_limit: Option<usize>) -> Option<(usize, isize)> {
@@ -148,13 +150,7 @@ mod tests {
 
     #[test]
     fn test_process() {
-        const COMMANDS: &str = "....#..
-..###.#
-#...#.#
-.#...##
-#.###..
-##.#.##
-.#..#..";
+        const COMMANDS: &str = include_str!("test.txt");
 
         assert_eq!(process(COMMANDS.to_string(), Some(10)), Some((10, 110)));
         assert_eq!(process(COMMANDS.to_string(), None), Some((20, 146)));

@@ -54,14 +54,7 @@ pub fn process_groups(input: String) -> Option<u32> {
 mod tests {
     use super::*;
 
-    const MOVES: &str = "\
-        vJrwpWtwJgWrhcsFMMfFFhFp\n\
-        jqHRNqRjqzjGDLGLrsFMfFZSrLrFZsSL\n\
-        PmmdzqPrVvPwwTWBwg\n\
-        wMqvLMZHhHMvwLHjbvcjnnSBnvTQFn\n\
-        ttgJtRGJQctTZtZT\n\
-        CrZsJsPPZsGzwwsLwLmpwMDw
-        ";
+    const MOVES: &str = include_str!("test.txt");
 
     #[test]
     fn test_process() {

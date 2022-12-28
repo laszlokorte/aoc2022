@@ -17,7 +17,7 @@ enum Signal {
 
 impl PartialOrd for Signal {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(&other))
+        Some(self.cmp(other))
     }
 }
 
@@ -38,7 +38,7 @@ fn list(input: &str) -> IResult<&str, Signal> {
         tag("["),
         separated_list0(
             tag(","),
-            alt((character::complete::u32.map(|v| Signal::Value(v)), list)),
+            alt((character::complete::u32.map(Signal::Value), list)),
         ),
         tag("]"),
     )(input)
@@ -74,7 +74,7 @@ pub fn process_sort(input: String) -> Option<usize> {
         Signal::Nested(vec![Signal::Nested(vec![Signal::Value(6)])]),
     ];
     for dev in &deviders {
-        all_signals.push(&dev);
+        all_signals.push(dev);
     }
     all_signals.sort();
 
@@ -90,30 +90,7 @@ mod tests {
 
     #[test]
     fn test_process() {
-        const COMMANDS: &str = "\
-        [1,1,3,1,1]\n\
-        [1,1,5,1,1]\n\
-        \n\
-        [[1],[2,3,4]]\n\
-        [[1],4]\n\
-        \n\
-        [9]\n\
-        [[8,7,6]]\n\
-        \n\
-        [[4,4],4,4]\n\
-        [[4,4],4,4,4]\n\
-        \n\
-        [7,7,7,7]\n\
-        [7,7,7]\n\
-        \n\
-        []\n\
-        [3]\n\
-        \n\
-        [[[]]]\n\
-        [[]]\n\
-        \n\
-        [1,[2,[3,[4,[5,6,7]]]],8,9]\n\
-        [1,[2,[3,[4,[5,6,0]]]],8,9]";
+        const COMMANDS: &str = include_str!("test.txt");
 
         assert_eq!(process(COMMANDS.to_string()), Some(13));
         assert_eq!(process_sort(COMMANDS.to_string()), Some(140));

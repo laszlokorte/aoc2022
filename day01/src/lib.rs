@@ -18,22 +18,8 @@ pub fn process(text: String, top_num: usize) -> Result<u32, ParseIntError> {
 mod tests {
     use super::*;
 
-    const INPUT: &str = "\
-    1000\n\
-    2000\n\
-    3000\n\
-    \n\
-    4000\n\
-    \n\
-    5000\n\
-    6000\n\
-    \n\
-    7000\n\
-    8000\n\
-    9000\n\
-    \n\
-    10000";
-
+    const INPUT: &str = include_str!("test.txt");
+    
     #[test]
     fn test() {
         assert_eq!(process(INPUT.to_owned(), 1), Ok(24000))

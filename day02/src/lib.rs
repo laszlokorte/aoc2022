@@ -123,23 +123,15 @@ pub fn process_goal(text: String) -> Option<u32> {
 mod tests {
     use super::*;
 
+    const MOVES: &str = include_str!("test.txt");
+
     #[test]
     fn test_process_move() {
-        const MOVES: &str = "\
-        A Y\n\
-        B X\n\
-        C Z\
-        ";
         assert_eq!(process_move(MOVES.to_string()), Some(15));
     }
 
     #[test]
     fn test_process_goal() {
-        const MOVES: &str = "\
-        A Y\n\
-        B X\n\
-        C Z\
-        ";
         assert_eq!(process_goal(MOVES.to_string()), Some(12));
     }
 }

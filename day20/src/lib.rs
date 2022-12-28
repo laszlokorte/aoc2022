@@ -48,10 +48,9 @@ pub fn process(input: String, multiplier: i64, repetitions: u64) -> Option<i64> 
 
     let mut permutation = Permutation::new(size);
     for _ in 0..repetitions {
-        for i in 0..size {
-            let movement = numbers[i];
+        for (i, movement) in numbers.iter().enumerate() {
             let start_position = permutation.get_now(i);
-            let distance = movement.abs() as usize % (size - 1);
+            let distance = movement.unsigned_abs() as usize % (size - 1);
             let negative = movement.is_negative();
 
             let mut current_position = start_position;
@@ -82,13 +81,7 @@ mod tests {
 
     #[test]
     fn test_process() {
-        const COMMANDS: &str = "1
-2
--3
-3
--2
-0
-4";
+        const COMMANDS: &str = include_str!("test.txt");
 
         assert_eq!(process(COMMANDS.to_string(), 1, 1), Some(3));
         assert_eq!(

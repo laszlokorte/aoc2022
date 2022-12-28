@@ -7,7 +7,7 @@ fn main() {
 
     if let Ok(content) = file {
         if let Some((result, display)) = process(content, true) {
-            println!("{}", result);
+            println!("{result}");
             println!("{display}");
         }
     }

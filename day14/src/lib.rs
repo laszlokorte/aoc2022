@@ -109,7 +109,7 @@ impl Cave {
                 sand_position = next_pos;
             } else {
                 counter += 1;
-                if let Some(_) = self.grid.insert(sand_position, CellContent::Sand) {
+                if self.grid.insert(sand_position, CellContent::Sand).is_some() {
                     break;
                 }
                 sand_position = self.source;
@@ -164,7 +164,7 @@ impl fmt::Display for Cave {
                 .map(|y| {
                     (min_x..=max_x)
                         .map(|x| {
-                            match self.grid.get(&Point { x: x, y: y }) {
+                            match self.grid.get(&Point { x, y }) {
                             Some(CellContent::Stone) => "#",
                             Some(CellContent::Sand) => "o",
                             Some(CellContent::Source) => "+",
@@ -218,46 +218,20 @@ mod tests {
 
     #[test]
     fn test_process() {
-        const COMMANDS: &str = "\
-        498,4 -> 498,6 -> 496,6\n\
-        503,4 -> 502,4 -> 502,9 -> 494,9";
+        const COMMANDS: &str = include_str!("test.txt");
 
         assert_eq!(
             process(COMMANDS.to_string(), false),
             Some((
                 24,
-                "\
-                ......+...\n\
-                ..........\n\
-                ......o...\n\
-                .....ooo..\n\
-                ....#ooo##\n\
-                ...o#ooo#.\n\
-                ..###ooo#.\n\
-                ....oooo#.\n\
-                .o.ooooo#.\n\
-                #########."
-                    .to_string()
+                include_str!("assert-1.txt").to_string()
             ))
         );
         assert_eq!(
             process(COMMANDS.to_string(), true),
             Some((
                 93,
-                "\
-                ..........o..........\n\
-                .........ooo.........\n\
-                ........ooooo........\n\
-                .......ooooooo.......\n\
-                ......oo#ooo##o......\n\
-                .....ooo#ooo#ooo.....\n\
-                ....oo###ooo#oooo....\n\
-                ...oooo.oooo#ooooo...\n\
-                ..oooooooooo#oooooo..\n\
-                .ooo#########ooooooo.\n\
-                ooooo.......ooooooooo\n\
-                #####################"
-                    .to_string()
+                include_str!("assert-2.txt").to_string()
             ))
         );
     }

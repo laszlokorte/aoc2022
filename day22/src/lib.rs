@@ -48,31 +48,30 @@ impl Portal {
         (x, y): (usize, usize),
         direction: Direction,
     ) -> Option<((usize, usize), Direction)> {
-        if direction == self.entrance_direction {
-            if self.entrance_orientation_at((x, y)).is_some() {
-                let (start_x, start_y) = self.entrance_start;
-                let (end_x, end_y) = self.entrance_end;
-                let mask_x = (end_x as i32 - start_x as i32).signum();
-                let mask_y = (end_y as i32 - start_y as i32).signum();
-                let delta_x = x as i32 - start_x as i32;
-                let delta_y = y as i32 - start_y as i32;
-                let projected_length = delta_x * mask_x + delta_y * mask_y;
+        if direction == self.entrance_direction && self.entrance_orientation_at((x, y)).is_some() {
+            let (start_x, start_y) = self.entrance_start;
+            let (end_x, end_y) = self.entrance_end;
+            let mask_x = (end_x as i32 - start_x as i32).signum();
+            let mask_y = (end_y as i32 - start_y as i32).signum();
+            let delta_x = x as i32 - start_x as i32;
+            let delta_y = y as i32 - start_y as i32;
+            let projected_length = delta_x * mask_x + delta_y * mask_y;
 
-                let (exit_start_x, exit_start_y) = self.exit_start;
-                let (exit_end_x, exit_end_y) = self.exit_end;
-                let exit_mask_x = (exit_end_x as i32 - exit_start_x as i32).signum();
-                let exit_mask_y = (exit_end_y as i32 - exit_start_y as i32).signum();
+            let (exit_start_x, exit_start_y) = self.exit_start;
+            let (exit_end_x, exit_end_y) = self.exit_end;
+            let exit_mask_x = (exit_end_x as i32 - exit_start_x as i32).signum();
+            let exit_mask_y = (exit_end_y as i32 - exit_start_y as i32).signum();
 
-                let projected_x = exit_start_x as i32 + projected_length * exit_mask_x;
-                let projected_y = exit_start_y as i32 + projected_length * exit_mask_y;
-                return Some((
-                    (projected_x as usize, projected_y as usize),
-                    self.exit_direction,
-                ));
-            }
+            let projected_x = exit_start_x as i32 + projected_length * exit_mask_x;
+            let projected_y = exit_start_y as i32 + projected_length * exit_mask_y;
+            
+            Some((
+                (projected_x as usize, projected_y as usize),
+                self.exit_direction,
+            ))
+        } else {
+            None
         }
-
-        return None;
     }
 
     pub fn inverse(&self) -> Self {
@@ -161,7 +160,7 @@ impl std::fmt::Display for Row {
         for field in &self.fields {
             let _ = write!(f, "{field}");
         }
-        writeln!(f, "")
+        writeln!(f)
     }
 }
 
@@ -310,9 +309,9 @@ impl Puzzle {
         };
 
         if self.can_walk_on((target_x, target_y)) {
-            return Some((*direction, (target_x, target_y)));
+            Some((*direction, (target_x, target_y)))
         } else {
-            return None;
+            None
         }
     }
 
@@ -327,7 +326,7 @@ impl Puzzle {
 impl std::fmt::Display for Puzzle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for row in &self.rows {
-            let _ = write!(f, "{}", row);
+            let _ = write!(f, "{row}");
         }
         write!(f, "")
     }
@@ -336,15 +335,15 @@ impl<'a> std::fmt::Display for State<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (r, row) in self.puzzle.rows.iter().enumerate() {
             for (c, field) in row.fields.iter().enumerate() {
-                if let Some(d) = self.visited.get(&(c, r as usize)) {
-                    let _ = write!(f, "{}", d);
-                } else if self.position == (c, r as usize) {
+                if let Some(d) = self.visited.get(&(c, r)) {
+                    let _ = write!(f, "{d}");
+                } else if self.position == (c, r) {
                     let _ = write!(f, "{}", self.direction);
                 } else {
-                    let _ = write!(f, "{}", field);
+                    let _ = write!(f, "{field}");
                 }
             }
-            let _ = writeln!(f, "");
+            let _ = writeln!(f);
         }
         write!(f, "")
     }
@@ -565,8 +564,7 @@ impl CubeNet {
                     let colored_l_corner = local_corners
                         .iter()
                         .filter(|c| self.corners.get(c).map(|c| c.is_some()).unwrap_or(true))
-                        .filter(|c| self.edges.get(c).map(|e| e.len() != 4).unwrap_or(false))
-                        .next();
+                        .find(|c| self.edges.get(c).map(|e| e.len() != 4).unwrap_or(false));
 
                     if void_corners == 1 && let Some(&uncolored) = uncolored_corners.clone().next() && let Some(&colored) = colored_l_corner {
                     self.set_color_same_as(uncolored, colored);
@@ -591,8 +589,7 @@ impl CubeNet {
     }
 
     fn set_distant_colors(&mut self) {
-        'outer: loop {
-            let Some((corn, new_color)) = ('find_color: loop {
+            let Some((corn, new_color)) = ('find_color: {
             let mut count_gray = 0;
             for (corner, color) in &self.corners {
                 if color.is_none() {
@@ -641,11 +638,11 @@ impl CubeNet {
             }
             break 'find_color None;
         }) else {
-            break 'outer;
+            return;
         };
 
-            self.set_color(*corn, new_color);
-        }
+        self.set_color(*corn, new_color);
+        
     }
 
     fn set_leftover_colors(&mut self) {
@@ -813,7 +810,7 @@ fn detect_portals(puzzle: &Puzzle) -> Option<Vec<Portal>> {
     //     }
     // }
     // dbg!(&portals);
-    return Some(portals);
+    Some(portals)
 }
 
 pub fn process_with_portals(input: String) -> Option<usize> {
@@ -851,20 +848,7 @@ mod tests {
 
     #[test]
     fn test_process() {
-        const COMMANDS: &str = "        ...#
-        .#..
-        #...
-        ....
-...#.......#
-........#...
-..#....#....
-..........#.
-        ...#....
-        .....#..
-        .#......
-        ......#.
-
-10R5L5R10L4R5L5";
+        const COMMANDS: &str = include_str!("test.txt");
 
         assert_eq!(process(COMMANDS.to_string()), Some(6032));
         assert_eq!(process_with_portals(COMMANDS.to_string()), Some(5031));

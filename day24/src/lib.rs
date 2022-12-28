@@ -8,7 +8,7 @@
 #![feature(step_trait)]
 
 use std::{
-    collections::{BTreeMap, HashSet, VecDeque},
+    collections::{HashSet, VecDeque},
     mem,
 };
 
@@ -119,7 +119,7 @@ fn parse_wind(x: isize, y: isize, char: char) -> Option<Blizzard> {
 pub fn process(input: String, number_of_passes: usize) -> Option<isize> {
     let lines = input.lines().into_iter().skip(1);
     let height = lines.clone().count() as isize - 1;
-    let width = lines.clone().find_map(|line| Some(line.len() - 2))? as isize;
+    let width = lines.clone().map(|line| line.len() - 2).next()? as isize;
     let blizzards = lines.enumerate().flat_map(|(y, line)| {
         line.chars()
             .skip(1)
@@ -170,12 +170,7 @@ mod tests {
 
     #[test]
     fn test_process() {
-        const COMMANDS: &str = "#.######
-#>>.<^<#
-#.<..<<#
-#>v.><>#
-#<^v^^>#
-######.#";
+        const COMMANDS: &str = include_str!("test.txt");
 
         assert_eq!(process(COMMANDS.to_string(), 1), Some(18));
         assert_eq!(process(COMMANDS.to_string(), 3), Some(54));

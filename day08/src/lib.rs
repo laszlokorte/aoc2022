@@ -1,7 +1,7 @@
 #![feature(iter_array_chunks)]
 #![feature(iter_intersperse)]
-use take_until::TakeUntilExt;
 
+use take_until::TakeUntilExt;
 
 fn walk_tree_cast<I:Iterator<Item=u32>+Clone>(height: u32, ray: I) -> (usize, bool)  {
     (
@@ -50,13 +50,10 @@ pub fn process(input: String) -> Option<(u32, usize)> {
 mod tests {
     use super::*;
 
+    const COMMANDS : &str = include_str!("test.txt");
+
     #[test]
     fn test_process() {
-        const COMMANDS : &str = "30373\n\
-        25512\n\
-        65332\n\
-        33549\n\
-        35390";
 
         assert_eq!(process(COMMANDS.to_string()), Some((21, 8)));
     }

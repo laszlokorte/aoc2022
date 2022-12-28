@@ -197,14 +197,7 @@ mod tests {
 
     #[test]
     fn test_process() {
-        const COMMANDS: &str = "R 4\n\
-        U 4\n\
-        L 3\n\
-        D 1\n\
-        R 4\n\
-        D 1\n\
-        L 5\n\
-        R 2";
+        const COMMANDS: &str = include_str!("test-1.txt");
 
         assert_eq!(process(COMMANDS.to_string(), 1), Some(13));
         assert_eq!(process(COMMANDS.to_string(), 9), Some(1));
@@ -215,14 +208,7 @@ mod tests {
 
     #[test]
     fn test_process_longer() {
-        const COMMANDS: &str = "R 5\n\
-        U 8\n\
-        L 8\n\
-        D 3\n\
-        R 17\n\
-        D 10\n\
-        L 25\n\
-        U 20";
+        const COMMANDS: &str = include_str!("test-2.txt");
 
         assert_eq!(process(COMMANDS.to_string(), 9), Some(36));
         assert_eq!(process_alternative(COMMANDS.to_string(), 9), Some(36));

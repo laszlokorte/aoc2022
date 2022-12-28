@@ -53,7 +53,7 @@ fn find_exterrior(cubes: &HashSet<(i32, i32, i32)>) -> Option<HashSet<(i32, i32,
         for (dx, dy, dz) in DIRECTIONS {
             let next = (current.0 + dx, current.1 + dy, current.2 + dz);
             if cubes.contains(&next) {
-                result.insert(current.clone());
+                result.insert(current);
                 continue;
             }
             if !xrange.contains(&next.0) || !yrange.contains(&next.1) || !zrange.contains(&next.2) {
@@ -93,19 +93,7 @@ mod tests {
 
     #[test]
     fn test_process() {
-        const COMMANDS: &str = "2,2,2
-1,2,2
-3,2,2
-2,1,2
-2,3,2
-2,2,1
-2,2,3
-2,2,4
-2,2,6
-1,2,5
-3,2,5
-2,1,5
-2,3,5";
+        const COMMANDS: &str = include_str!("test.txt");
 
         assert_eq!(process(COMMANDS.to_string(), false), Some(64));
         assert_eq!(process(COMMANDS.to_string(), true), Some(58));

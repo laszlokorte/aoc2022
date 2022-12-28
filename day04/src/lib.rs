@@ -53,13 +53,7 @@ pub fn process(input: String, test_overlap: Overlap) -> Option<u32> {
 mod tests {
     use super::*;
 
-    const MOVES: &str = "\
-    2-4,6-8\n\
-    2-3,4-5\n\
-    5-7,7-9\n\
-    2-8,3-7\n\
-    6-6,4-6\n\
-    2-6,4-8";
+    const MOVES: &str = include_str!("test.txt");
 
     #[test]
     fn test_process_fully() {

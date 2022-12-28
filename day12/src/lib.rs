@@ -211,12 +211,7 @@ mod tests {
 
     #[test]
     fn test_process() {
-        const COMMANDS: &str = "\
-        Sabqponm\n\
-        abcryxxl\n\
-        accszExk\n\
-        acctuvwj\n\
-        abdefghi";
+        const COMMANDS: &str = include_str!("test.txt");
 
         assert_eq!(
             process(

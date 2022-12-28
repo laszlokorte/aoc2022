@@ -98,33 +98,33 @@ fn binary_expression(input: &str) -> IResult<&str, Expression> {
 fn expression(input: &str) -> IResult<&str, Expression> {
     alt((
         binary_expression,
-        character::complete::i64.map(|n| Expression::Constant(n)),
+        character::complete::i64.map(Expression::Constant),
     ))(input)
 }
 fn node(input: &str) -> IResult<&str, (&str, Expression)> {
     separated_pair(character::complete::alpha1, tag(": "), expression)(input)
 }
 
-fn solve<'s, 'a, 'c>(
+fn solve<'s, 'a>(
     map: &'a HashMap<&'s str, Expression<'s>>,
     root: &'s str,
-    evaluated: &'c mut HashMap<&'s str, i64>,
+    evaluated: &mut HashMap<&'s str, i64>,
     reversed_map: &'a mut HashMap<&'s str, Expression<'s>>,
 ) -> Option<i64> {
     let mut visited = HashSet::<&str>::new();
     let mut seen = HashSet::<&str>::new();
     let mut stack = VecDeque::<&str>::new();
 
-    stack.push_front(&root);
-    seen.insert(&root);
+    stack.push_front(root);
+    seen.insert(root);
     while let Some(current) = stack.pop_front() {
         let Some(expr) = map.get(&current) else {
             continue;
         };
-        if !visited.insert(&current) {
-            match expr.eval(&evaluated) {
+        if !visited.insert(current) {
+            match expr.eval(evaluated) {
                 Ok(value) => {
-                    evaluated.insert(&current, value);
+                    evaluated.insert(current, value);
                     reversed_map.insert(current, expr.clone());
                 }
                 Err(e) => {
@@ -146,7 +146,7 @@ fn solve<'s, 'a, 'c>(
                 }
             }
         } else {
-            stack.push_front(&current);
+            stack.push_front(current);
             if let Expression::BinaryOp(_, a, b) = expr {
                 if seen.insert(a) {
                     stack.push_front(a);
@@ -192,21 +192,7 @@ mod tests {
 
     #[test]
     fn test_process() {
-        const COMMANDS: &str = "root: pppw + sjmn
-dbpl: 5
-cczh: sllz + lgvd
-zczc: 2
-ptdq: humn - dvpt
-dvpt: 3
-lfqf: 4
-humn: 5
-ljgn: 2
-sjmn: drzm * dbpl
-sllz: 4
-pppw: cczh / lfqf
-lgvd: ljgn * ptdq
-drzm: hmdt - zczc
-hmdt: 32";
+        const COMMANDS: &str = include_str!("test.txt");
 
         assert_eq!(process(COMMANDS.to_string()), Some(152));
         assert_eq!(process_solve(COMMANDS.to_string()), Some(301));

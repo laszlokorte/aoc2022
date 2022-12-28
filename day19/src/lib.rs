@@ -96,8 +96,8 @@ struct Rule<const SIZE: usize> {
     max_utility: [u32; SIZE],
 }
 
-impl<'bp> std::convert::Into<Rule<4>> for &'bp Blueprint {
-    fn into(self) -> Rule<4> {
+impl<'bp> std::convert::From<&'bp Blueprint> for Rule<4> {
+    fn from(value: &'bp Blueprint) -> Self {
         let mapping = [
             Resource::Ore,
             Resource::Clay,
@@ -108,7 +108,7 @@ impl<'bp> std::convert::Into<Rule<4>> for &'bp Blueprint {
             target: 3,
             costs: mapping.map(|r| {
                 mapping.map(|c| {
-                    self.robots
+                    value.robots
                         .get(&r)
                         .and_then(|cc| cc.ingredients.get(&c))
                         .cloned()
@@ -116,7 +116,7 @@ impl<'bp> std::convert::Into<Rule<4>> for &'bp Blueprint {
                 })
             }),
             max_utility: mapping.map(|r| {
-                self.robots
+                value.robots
                     .values()
                     .map(|costs| costs.ingredients.get(&r).unwrap_or(&0))
                     .max()
@@ -129,9 +129,7 @@ impl<'bp> std::convert::Into<Rule<4>> for &'bp Blueprint {
 
 impl<const SIZE: usize> Rule<SIZE> {
     fn can_buy(&self, state: &State<SIZE>, resource_index: usize) -> bool {
-        (0..SIZE).fold(true, |acc, r| {
-            acc && state.resources[r] >= self.costs[resource_index][r]
-        })
+        (0..SIZE).all(|r| state.resources[r] >= self.costs[resource_index][r])
     }
 
     fn buying_to_late(&self, state: &State<SIZE>, resource_index: usize) -> bool {
@@ -147,7 +145,7 @@ impl<const SIZE: usize> Rule<SIZE> {
         new_state.time_left -= 1;
 
         for r in 0..SIZE {
-            new_state.rejected_to_buy[r] = self.can_buy(&state, r);
+            new_state.rejected_to_buy[r] = self.can_buy(state, r);
             new_state.resources[r] += new_state.robots[r];
         }
         new_state
@@ -238,17 +236,7 @@ mod tests {
 
     #[test]
     fn test_process() {
-        const COMMANDS: &str = "Blueprint 1:
-  Each ore robot costs 4 ore.
-  Each clay robot costs 2 ore.
-  Each obsidian robot costs 3 ore and 14 clay.
-  Each geode robot costs 2 ore and 7 obsidian.
-
-Blueprint 2:
-  Each ore robot costs 2 ore.
-  Each clay robot costs 3 ore.
-  Each obsidian robot costs 3 ore and 8 clay.
-  Each geode robot costs 3 ore and 12 obsidian.";
+        const COMMANDS: &str = include_str!("test.txt");
 
         assert_eq!(process(COMMANDS.to_string(), 24), Some(33));
         // assert_eq!(process_part2(COMMANDS.to_string(), 32), Some(3472));
