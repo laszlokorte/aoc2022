@@ -589,59 +589,63 @@ impl CubeNet {
     }
 
     fn set_distant_colors(&mut self) {
+        loop {
             let Some((corn, new_color)) = ('find_color: {
-            let mut count_gray = 0;
-            for (corner, color) in &self.corners {
-                if color.is_none() {
+                let mut count_gray = 0;
+                for (corner, color) in &self.corners {
+                    if color.is_none() {
 
-                    let neighbours = self.edges.get(corner).unwrap();
-                    let neigbour_colors = neighbours.iter().flat_map(|n| self.corners.get(n));
-                    let nodes_of_color = neigbour_colors.flat_map(|&c| {
-                        self.corners
-                            .iter()
-                            .filter_map(move |(n, &nc)| if c.is_some() && nc == c { Some(n) } else { None })
-                    });
-                    let nodes_touching_color: BTreeSet<_> = nodes_of_color
-                        .clone()
-                        .flat_map(|n| {
-                            self.edges
-                                .get(n)
-                                .unwrap()
+                        let neighbours = self.edges.get(corner).unwrap();
+                        let neigbour_colors = neighbours.iter().flat_map(|n| self.corners.get(n));
+                        let nodes_of_color = neigbour_colors.flat_map(|&c| {
+                            self.corners
                                 .iter()
-                                .filter(|c| self.corners.get(c).is_some())
-                        })
-                        .filter(|n| {
-                            if *n == corner {
-                                return false;
-                            }
-                            let Some(col) = self.corners.get(n).unwrap() else {
-                                return false;
-                            };
-
-                            let total_degree = self.color_degrees.get(col).unwrap_or(&0);
-                            total_degree < &3
-                        })
-                        .collect();
-
-                    if nodes_touching_color.len() == 1 {
-                        let touching_node = *nodes_touching_color.iter().next().unwrap();
-                        let new_color = *self.corners.get(touching_node).unwrap();
-                        break 'find_color Some((corner, new_color));
+                                .filter_map(move |(n, &nc)| if c.is_some() && nc == c { Some(n) } else { None })
+                        });
+                        let nodes_touching_color: BTreeSet<_> = nodes_of_color
+                            .clone()
+                            .flat_map(|n| {
+                                self.edges
+                                    .get(n)
+                                    .unwrap()
+                                    .iter()
+                                    .filter(|c| self.corners.get(c).is_some())
+                            })
+                            .filter(|n| {
+                                if *n == corner {
+                                    return false;
+                                }
+                                let Some(col) = self.corners.get(n).unwrap() else {
+                                    return false;
+                                };
+    
+                                let total_degree = self.color_degrees.get(col).unwrap_or(&0);
+                                total_degree < &3
+                            })
+                            .collect();
+    
+                        if nodes_touching_color.len() == 1 {
+                            let touching_node = *nodes_touching_color.iter().next().unwrap();
+                            let new_color = *self.corners.get(touching_node).unwrap();
+                            break 'find_color Some((corner, new_color));
+                        }
+                        count_gray += 1;
                     }
-                    count_gray += 1;
                 }
-            }
-            if count_gray == 1 {
-                let gray_corner = *self.corners.iter().find_map(|(corn, col)| if col.is_none() {Some(corn)} else {None}).unwrap();
-                let color_left = self.color_degrees.iter().find_map(|(col,deg)| if deg != &3 {Some(col)} else {None}).cloned();
-                self.set_color(gray_corner, color_left);
-            }
-            break 'find_color None;
-        }) else {
-            return;
-        };
 
-        self.set_color(*corn, new_color);
+                if count_gray == 1 {
+                    let gray_corner = *self.corners.iter().find_map(|(corn, col)| if col.is_none() {Some(corn)} else {None}).unwrap();
+                    let color_left = self.color_degrees.iter().find_map(|(col,deg)| if deg != &3 {Some(col)} else {None}).cloned();
+                    self.set_color(gray_corner, color_left);
+                }
+
+                return;
+            }) else {
+                continue;
+            };
+    
+            self.set_color(*corn, new_color);
+        }
         
     }
 
