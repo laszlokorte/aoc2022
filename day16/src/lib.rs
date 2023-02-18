@@ -16,6 +16,7 @@ use nom::sequence::preceded;
 use nom::sequence::separated_pair;
 use nom::*;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 
 #[derive(Debug)]
 struct Node<'a> {
@@ -52,6 +53,7 @@ fn connections(input: &str) -> IResult<&str, Vec<Node>> {
     )(input)
 }
 
+#[derive(Debug)]
 struct Graph<'s> {
     matrix: Vec<Vec<Option<u32>>>,
     labels: Vec<&'s str>,
@@ -174,24 +176,75 @@ impl std::fmt::Display for Graph<'_> {
         )
     }
 }
-type ClosedValves = BTreeSet<usize>;
-#[derive(Debug, Eq, PartialEq, Clone)]
-struct State<const PLAYERS: usize> {
-    turn: usize,
-    players: [PlayerState; PLAYERS],
-    pressure_released: u32,
-    closed: ClosedValves,
-}
 
-#[derive(Debug, Default, Copy, Eq, PartialEq, Clone)]
-struct PlayerState {
-    time: u32,
-    just_moved: bool,
+#[derive(Debug, PartialEq, Eq, Hash, Default)]
+struct State {
+    time_left: u32,
     current_position: usize,
-    open_flow: u32,
+    open: usize,
 }
 
-pub fn process<const PLAYERS: usize>(
+impl State {
+    fn visit(&self, position: usize, duration: u32) -> Option<State> {
+        let mask = 1 << position;
+        let Some(time_left) = self.time_left.checked_sub(duration + 1) else {
+            return None
+        };
+
+        if mask & self.open > 0 {
+            return None
+        }
+
+        Some(Self {
+            time_left,
+            current_position: position,
+            open: self.open | mask
+        })
+    }
+}
+
+#[derive(Debug,Default)]
+struct Optimizer {
+    cache: HashMap<State, u32>
+}
+
+impl Optimizer{
+
+    fn best(&mut self, graph: &Graph, state: &State) -> Option<u32> {
+        if let Some(result) = self.cache.get(state) {
+            return Some(*result)
+        }
+
+        let mut max = 0;
+        let Some(neighbours) = graph.matrix.get(state.current_position) else {
+            return None
+        };
+
+        for (neighbour, &distance) in neighbours.iter().enumerate() {
+            let Some(d) = distance else {
+                continue
+            };
+
+            let Some(new_state) = state.visit(neighbour, d) else {
+                continue
+            };
+
+            let Some(flow) = graph.nodes.get(neighbour) else {
+                continue
+            };
+
+            let Some(b) = self.best(graph, &new_state) else {
+                continue;
+            };
+
+            max = u32::max(max, b + flow * new_state.time_left);
+        }
+        
+        Some(max)
+    }
+}
+
+pub fn process_single(
     input: String,
     start_pos_label: &str,
     time_limit: u32,
@@ -216,111 +269,76 @@ pub fn process<const PLAYERS: usize>(
         .labels
         .iter()
         .position(|l| l == &start_pos_label)?;
-    let best = optimize_graph::<PLAYERS>(&reduced_graph, start_pos, time_limit);
-    best.map(|s| s.pressure_released)
+    let mut optimizer = Optimizer::default();
+    let initial_state = State {
+        time_left: time_limit,
+        current_position: start_pos,
+        open: 0,
+    };
+
+    optimizer.best(&reduced_graph, &initial_state)
 }
 
-fn optimize_graph<const PLAYERS: usize>(
-    graph: &Graph,
-    start_position: usize,
+
+pub fn process_double(
+    input: String,
+    start_pos_label: &str,
     time_limit: u32,
-) -> Option<State<PLAYERS>> {
-    let initial_state = State {
-        turn: 0,
-        players: [PlayerState {
-            current_position: start_position,
-            ..PlayerState::default()
-        }; PLAYERS],
-        pressure_released: 0,
-        closed: (0..graph.labels.len())
-            .filter(|n| graph.nodes[*n] > 0)
-            .into_iter()
-            .collect(),
-    };
-    let mut queue = std::collections::VecDeque::new();
-    let mut best = initial_state.clone();
-    queue.push_front(initial_state);
-    while let Some(State {
-        turn,
-        pressure_released,
-        closed,
-        players,
-    }) = queue.pop_front()
-    {
-        let turn = turn % PLAYERS;
-        let time = players[turn].time;
-        // println!("{:?},{}", time, turn);
-        if time >= time_limit {
-            if turn + 1 < PLAYERS {
-                queue.push_front(State {
-                    turn: turn + 1,
-                    closed: closed.clone(),
-                    pressure_released,
-                    players,
-                })
-            } else if pressure_released > best.pressure_released {
-                best = State {
-                    turn,
-                    pressure_released,
-                    players,
-                    closed: closed.clone(),
-                };
-            }
-            continue;
-        }
-
-        if closed.is_empty() && time < time_limit {
-            let mut players_new = players;
-            players_new[turn].just_moved = false;
-            players_new[turn].time += 1;
-            queue.push_front(State {
-                turn: turn + 1,
-                closed: closed.clone(),
-                pressure_released: pressure_released + players[turn].open_flow,
-                players: players_new,
-            });
-        }
-        let can_move = &graph.matrix[players[turn].current_position];
-
-        if closed.contains(&players[turn].current_position) {
-            let mut opened = closed.clone();
-            opened.remove(&players[turn].current_position);
-            let reduction = graph.nodes[players[turn].current_position];
-            let mut players_new = players;
-            let current_open_flow = players[turn].open_flow;
-            players_new[turn].just_moved = false;
-            players_new[turn].time += 1;
-            players_new[turn].open_flow += reduction;
-            queue.push_front(State {
-                turn: turn + 1,
-                players: players_new,
-                closed: opened,
-                pressure_released: pressure_released + current_open_flow,
-            })
-        }
-        if players[turn].just_moved {
-            continue;
-        }
-        for (target, time_needed) in can_move.iter().enumerate() {
-            if let Some(t) = time_needed {
-                if time + t <= time_limit && t > &0 {
-                    let mut players_new = players;
-                    players_new[turn].just_moved = true;
-                    players_new[turn].current_position = target;
-                    players_new[turn].time += *t;
-                    queue.push_front(State {
-                        players: players_new,
-                        turn: turn + 1,
-                        closed: closed.clone(),
-                        pressure_released: pressure_released + players[turn].open_flow * t,
-                    })
+) -> Option<u32> {
+    let (_, conns) = connections(&input).ok()?;
+    let mut graph = Graph::try_from(&conns).ok()?;
+    graph.floyd_warshall();
+    let reduced_graph = graph.without_nodes(
+        &conns
+            .iter()
+            .enumerate()
+            .filter_map(|(i, n)| {
+                if n.flow_rate > 0 || n.name == start_pos_label {
+                    None
+                } else {
+                    Some(i)
                 }
-            }
-        }
+            })
+            .collect(),
+    );
+    let start_pos = reduced_graph
+        .labels
+        .iter()
+        .position(|l| l == &start_pos_label)?;
+
+    let mut optimizer = Optimizer::default();
+
+    let partitions = ((1 << graph.nodes.len()) - 1) / 2;
+    let mut best_sum = 0;
+
+    for initial_mask in 0..=partitions {
+        let initial_state_a = State {
+            time_left: time_limit,
+            current_position: start_pos,
+            open: initial_mask,
+        };
+
+        let initial_state_b = State {
+            time_left: time_limit,
+            current_position: start_pos,
+            open: !initial_mask,
+        };
+
+        let Some(best_a) = optimizer.best(&reduced_graph, &initial_state_a) else {
+            continue;
+        };
+
+        let Some(best_b) = optimizer.best(&reduced_graph, &initial_state_b) else {
+            continue;
+        };
+
+        best_sum = best_sum.max(best_a + best_b);
     }
 
-    Some(best)
+    Some(best_sum)
 }
+
+
 
 #[cfg(test)]
 mod tests {
@@ -331,10 +349,10 @@ mod tests {
         const COMMANDS: &str = include_str!("test.txt");
         
         assert_eq!(
-            process::<1>(include_str!("../input.txt").to_string(), "AA", 30),
+            process_single(include_str!("../input.txt").to_string(), "AA", 30),
             Some(1754)
         );
-        assert_eq!(process::<1>(COMMANDS.to_string(), "AA", 30), Some(1651));
-        assert_eq!(process::<2>(COMMANDS.to_string(), "AA", 26), Some(1707));
+        assert_eq!(process_single(COMMANDS.to_string(), "AA", 30), Some(1651));
+        assert_eq!(process_double(COMMANDS.to_string(), "AA", 26), Some(1707));
     }
 }
