@@ -32,7 +32,7 @@ enum Field {
     Stone,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Portal {
     pub entrance_start: (usize, usize),
     pub entrance_end: (usize, usize),
@@ -199,6 +199,182 @@ impl Direction {
             Self::Down => Self::Up,
             Self::Left => Self::Right,
             Self::Up => Self::Down,
+        }
+    }
+
+    fn get_translation(&self) -> Transform {
+        match self {
+            Direction::Right => Transform::translate(2, 0, 0),
+            Direction::Down => Transform::translate(0, -2, 0),
+            Direction::Left => Transform::translate(-2, 0, 0),
+            Direction::Up => Transform::translate(0, 2, 0),
+        }
+    }
+
+    fn get_rotation(&self) -> Transform {
+        match self {
+            Direction::Right => Transform::rotate_y(1),
+            Direction::Down => Transform::rotate_x(1),
+            Direction::Left => Transform::rotate_y(-1),
+            Direction::Up => Transform::rotate_x(-1),
+        }
+    }
+
+    fn get_delta(&self) -> (isize, isize) {
+        match self {
+            Direction::Right => (-1, 0),
+            Direction::Down => (0,1),
+            Direction::Left => (1,0),
+            Direction::Up => (0,-1),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Transform {
+    matrix: [[isize;4];3],
+}
+
+impl Transform {
+    fn new() -> Self {
+        Self {
+            matrix: [
+                [1,0,0,0],
+                [0,1,0,0],
+                [0,0,1,0],
+            ],
+        }
+    }
+
+    fn translate(x:isize, y:isize, z:isize) -> Self {
+        Self {
+            matrix: [
+                [1,0,0,x],
+                [0,1,0,y],
+                [0,0,1,z],
+            ],
+        }
+    }
+
+    fn mul_trans(&self, other: &Self) -> Self {
+        let a = 
+        self.matrix[0][0] * other.matrix[0][0]+ 
+        self.matrix[0][1] * other.matrix[1][0]+ 
+        self.matrix[0][2] * other.matrix[2][0];
+        let b = 
+        self.matrix[0][0] * other.matrix[0][1]+ 
+        self.matrix[0][1] * other.matrix[1][1]+ 
+        self.matrix[0][2] * other.matrix[2][1];
+        let c = 
+        self.matrix[0][0] * other.matrix[0][2]+ 
+        self.matrix[0][1] * other.matrix[1][2]+ 
+        self.matrix[0][2] * other.matrix[2][2];
+        let d = 
+        self.matrix[0][0] * other.matrix[0][3]+ 
+        self.matrix[0][1] * other.matrix[1][3]+ 
+        self.matrix[0][2] * other.matrix[2][3]+ 
+        self.matrix[0][3];
+
+
+        let e = 
+        self.matrix[1][0] * other.matrix[0][0]+ 
+        self.matrix[1][1] * other.matrix[1][0]+ 
+        self.matrix[1][2] * other.matrix[2][0];
+        let f = 
+        self.matrix[1][0] * other.matrix[0][1]+ 
+        self.matrix[1][1] * other.matrix[1][1]+ 
+        self.matrix[1][2] * other.matrix[2][1];
+        let g = 
+        self.matrix[1][0] * other.matrix[0][2]+ 
+        self.matrix[1][1] * other.matrix[1][2]+ 
+        self.matrix[1][2] * other.matrix[2][2];
+        let h = 
+        self.matrix[1][0] * other.matrix[0][3]+ 
+        self.matrix[1][1] * other.matrix[1][3]+ 
+        self.matrix[1][2] * other.matrix[2][3]+ 
+        self.matrix[1][3];
+
+
+        let i = 
+        self.matrix[2][0] * other.matrix[0][0]+ 
+        self.matrix[2][1] * other.matrix[1][0]+ 
+        self.matrix[2][2] * other.matrix[2][0];
+        let j = 
+        self.matrix[2][0] * other.matrix[0][1]+ 
+        self.matrix[2][1] * other.matrix[1][1]+ 
+        self.matrix[2][2] * other.matrix[2][1];
+        let k = 
+        self.matrix[2][0] * other.matrix[0][2]+ 
+        self.matrix[2][1] * other.matrix[1][2]+ 
+        self.matrix[2][2] * other.matrix[2][2];
+        let l = 
+        self.matrix[2][0] * other.matrix[0][3]+ 
+        self.matrix[2][1] * other.matrix[1][3]+ 
+        self.matrix[2][2] * other.matrix[2][3]+ 
+        self.matrix[2][3];
+
+        Self {
+            matrix: [
+                [a,b,c,d],
+                [e,f,g,h],
+                [i,j,k,l],
+            ],
+        }
+    }
+
+    fn mul_pos(&self, pos: Position) -> Position {
+        let x = self.matrix[0][0] * pos.vector[0] + 
+        self.matrix[0][1] * pos.vector[1] + 
+        self.matrix[0][2] * pos.vector[2] +
+        self.matrix[0][3];
+
+        let y = self.matrix[1][0] * pos.vector[0] + 
+        self.matrix[1][1] * pos.vector[1] + 
+        self.matrix[1][2] * pos.vector[2] +
+        self.matrix[1][3];
+
+        let z = self.matrix[2][0] * pos.vector[0] + 
+        self.matrix[2][1] * pos.vector[1] + 
+        self.matrix[2][2] * pos.vector[2] +
+        self.matrix[2][3];
+
+        Position { vector: 
+            [
+                x,y,z
+            ]
+        }
+    }
+
+    fn rotate_x(i:isize) -> Transform {
+        Self {
+            matrix: [
+                [1, 0,0,0],
+                [0, 0,-i,0],
+                [0, i,0,0],
+            ],
+        }
+    }
+
+    fn rotate_y(i:isize) -> Transform {
+        Self {
+            matrix: [
+                [0,0,i,0],
+                [0,1,0,0],
+                [-i,0,0,0],
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct Position {
+    vector: [isize;3],
+}
+
+impl Position {
+    fn new(x:isize,y:isize,z:isize,) -> Self {
+        Self {
+            vector: [x,y,z],
         }
     }
 }
@@ -594,7 +770,6 @@ impl CubeNet {
                 let mut count_gray = 0;
                 for (corner, color) in &self.corners {
                     if color.is_none() {
-
                         let neighbours = self.edges.get(corner).unwrap();
                         let neigbour_colors = neighbours.iter().flat_map(|n| self.corners.get(n));
                         let nodes_of_color = neigbour_colors.flat_map(|&c| {
@@ -666,13 +841,159 @@ impl CubeNet {
     }
 }
 
-fn detect_portals(puzzle: &Puzzle) -> Option<Vec<Portal>> {
+fn detect_portals_geometrically(puzzle: &Puzzle)  -> Option<Vec<Portal>> {
+    let (w, h) = puzzle.dimensions_2d();
+    let side_length = num::integer::gcd(w, h);
+    let sides_x = w / side_length;
+    let sides_y = h / side_length;
+    let mut side_set = BTreeMap::<(isize, isize), usize>::new();
+    let mut edges = Vec::new();
+
+    for y in 0..sides_y {
+        for row in 0..side_length {
+            for x in 0..sides_x {
+                for col in 0..side_length {
+                    let coord = (x * side_length + col, (y * side_length) + row);
+                    if !puzzle.is_void_at(coord) {
+                        let side_count = side_set.len();
+                        side_set.entry((x as isize, y as isize)).or_insert(side_count);
+                        edges.push(((x as isize, y as isize), (x as isize, y as isize + 1), Direction::Down));
+                        edges.push(((x as isize, y as isize + 1), (x as isize + 1, y as isize + 1), Direction::Right));
+                        edges.push(((x as isize + 1, y as isize + 1), (x as isize + 1, y as isize), Direction::Up));
+                        edges.push(((x as isize + 1, y as isize), (x as isize, y as isize), Direction::Left));
+                    }
+                }
+            }
+        }
+    }
+
+    let Some((face_coord, _)) = side_set.pop_first() else {
+        return None;
+    };
+
+    let mut queue = VecDeque::new();
+    let (init_x, init_y) = face_coord;
+
+    queue.push_back((face_coord, Transform::translate(-(init_x)*2-1, -(init_y)*2-1, 0), Transform::new()));
+    
+    let mut corner_mapping = HashMap::new();
+
+    while let Some(((face_x,face_y), translation, rotation)) = queue.pop_front() {
+        let corners_2d = [
+            (face_x, face_y),
+            (face_x, face_y + 1),
+            (face_x + 1, face_y + 1),
+            (face_x + 1, face_y)
+        ];
+
+        for (x,y) in corners_2d {
+            let c3d = Position::new(2*x,2*y,-1);
+            let pos3d = rotation.mul_pos(translation.mul_pos(c3d));
+            corner_mapping.insert((x,y), pos3d);
+        }
+
+        for d in [
+            Direction::Up,
+            Direction::Right,
+            Direction::Down,
+            Direction::Left,
+        ] {
+            let (delta_x, delta_y) = d.get_delta();
+            let next_face = (face_x + delta_x, face_y + delta_y);
+            if side_set.remove(&next_face).is_some() {
+                queue.push_back((next_face, translation.mul_trans(&d.get_translation()), rotation.mul_trans(&d.get_rotation())));
+            }
+        }
+    }
+    let mut portals = Vec::<_>::new();
+    let mut colored_edges =
+        HashMap::<(Position, Position), (Direction, (isize, isize), (isize, isize))>::new();
+    
+    for (from, to, edge_direction) in edges {
+        let from_color = *corner_mapping.get(&from)?;
+        let to_color = *corner_mapping.get(&to)?;
+        let edge_color = (from_color, to_color);
+        let back_edge = (edge_color.1, edge_color.0);
+        if let Some((other_edge_direction, other_to, other_from)) =
+            colored_edges.remove(&back_edge)
+        {
+            if (other_to, other_from) == (to, from) {
+                continue;
+            }
+
+            let entrance_direction = edge_direction.turn_cw();
+            let exit_direction = other_edge_direction.turn_ccw();
+
+            let offset: (isize, isize) = match entrance_direction {
+                Direction::Right => (-1, 0),
+                Direction::Down => (0, -1),
+                Direction::Left => (0, 0),
+                Direction::Up => (0, 0),
+            };
+
+            let offset_other: (isize, isize) = match exit_direction {
+                Direction::Right => (0, 0),
+                Direction::Down => (0, 0),
+                Direction::Left => (-1, 0),
+                Direction::Up => (0, -1),
+            };
+            let start_x_sign = if from.0 > to.0 { -1 } else { 0 };
+            let start_y_sign = if from.1 > to.1 { -1 } else { 0 };
+            let end_x_sign = if to.0 > from.0 { -1 } else { 0 };
+            let end_y_sign = if to.1 > from.1 { -1 } else { 0 };
+
+            let other_start_x_sign = if other_from.0 > other_to.0 { -1 } else { 0 };
+            let other_start_y_sign = if other_from.1 > other_to.1 { -1 } else { 0 };
+            let other_end_x_sign = if other_to.0 > other_from.0 { -1 } else { 0 };
+            let other_end_y_sign = if other_to.1 > other_from.1 { -1 } else { 0 };
+
+            let portal = Portal {
+                entrance_start: (
+                    (start_x_sign + from.0 * side_length as isize + offset.0) as usize,
+                    (start_y_sign + from.1 * side_length as isize + offset.1) as usize,
+                ),
+                entrance_end: (
+                    (end_x_sign + to.0 * side_length as isize + offset.0) as usize,
+                    (end_y_sign + to.1 * side_length as isize + offset.1) as usize,
+                ),
+                entrance_direction,
+                exit_start: (
+                    (other_start_x_sign
+                        + other_from.0 * side_length as isize
+                        + offset_other.0) as usize,
+                    (other_start_y_sign
+                        + other_from.1 * side_length as isize
+                        + offset_other.1) as usize,
+                ),
+                exit_end: (
+                    (other_end_x_sign
+                        + other_to.0 * side_length as isize
+                        + offset_other.0) as usize,
+                    (other_end_y_sign
+                        + other_to.1 * side_length as isize
+                        + offset_other.1) as usize,
+                ),
+                exit_direction,
+            };
+            portals.push(portal);
+            portals.push(portal.inverse());
+        } else {
+            colored_edges.insert(edge_color, (edge_direction, from, to));
+            colored_edges.insert(back_edge, (edge_direction.opposite(), to, from));
+        }
+    }
+    
+    Some(portals)
+}
+
+fn detect_portals_topological(puzzle: &Puzzle) -> Option<Vec<Portal>> {
     let (w, h) = puzzle.dimensions_2d();
     let side_length = num::integer::gcd(w, h);
     let sides_x = w / side_length;
     let sides_y = h / side_length;
     let mut side_set = BTreeMap::<(usize, usize), usize>::new();
     let mut net = CubeNet::new();
+
 
     for y in 0..sides_y {
         for row in 0..side_length {
@@ -792,40 +1113,19 @@ fn detect_portals(puzzle: &Puzzle) -> Option<Vec<Portal>> {
         }
     }
 
-    // for y in 0..sides_y {
-    //     for row in 0..side_length {
-    //         for x in 0..sides_x {
-    //             for col in 0..side_length {
-    //                 let coord = (x * side_length + col, (y * side_length) + row);
-    //                 if let Some(portal_orientation) = portals.iter().find_map(|p| {
-    //                     p.entrance_orientation_at(coord)
-    //                         .map(|_| p.entrance_direction)
-    //                 }) {
-    //                     print!("{portal_orientation}");
-    //                 } else if puzzle.is_void_at(coord) {
-    //                     print!(" ")
-    //                 } else {
-    //                     let side_number = side_set.get(&(x, y))?;
-    //                     print!("{}", side_number);
-    //                 }
-    //             }
-    //         }
-    //         println!("");
-    //     }
-    // }
-    // dbg!(&portals);
     Some(portals)
 }
 
-pub fn process_with_portals(input: String) -> Option<usize> {
+pub fn process_with_portals(input: String, geo:bool) -> Option<usize> {
     let (_, puzzle) = puzzle(&input).ok()?;
 
-    let auto_portals = detect_portals(&puzzle)?;
+    let auto_portals_geo = detect_portals_geometrically(&puzzle)?;
+    let auto_portals_topo = detect_portals_topological(&puzzle)?;
 
     let puzzle = Puzzle {
         rows: puzzle.rows,
         steps: puzzle.steps,
-        portals: auto_portals,
+        portals: if geo { auto_portals_geo } else { auto_portals_topo },
     };
     let mut state = State {
         direction: Direction::Right,
@@ -855,6 +1155,33 @@ mod tests {
         const COMMANDS: &str = include_str!("test.txt");
 
         assert_eq!(process(COMMANDS.to_string()), Some(6032));
-        assert_eq!(process_with_portals(COMMANDS.to_string()), Some(5031));
+        assert_eq!(process_with_portals(COMMANDS.to_string(), true), Some(5031));
+        assert_eq!(process_with_portals(COMMANDS.to_string(), false), Some(5031));
+    }
+
+    #[test]
+    fn test_transform() {
+        let rot_x = Transform::rotate_x(1);
+        assert_eq!(rot_x.mul_pos(Position { vector: [0,0,0] }), Position { vector: [0,0,0] });
+        assert_eq!(rot_x.mul_pos(Position { vector: [0,1,0] }), Position { vector: [0,0,1] });
+        assert_eq!(rot_x.mul_pos(Position { vector: [0,0,1] }), Position { vector: [0,-1,0] });
+        assert_eq!(rot_x.mul_pos(Position { vector: [0,-1,0] }), Position { vector: [0,0,-1] });
+        assert_eq!(rot_x.mul_pos(Position { vector: [0,0,-1] }), Position { vector: [0,1,0] });
+
+
+        let rot_x_neg = Transform::rotate_x(-1);
+        assert_eq!(rot_x_neg.mul_pos(Position { vector: [0,0,0] }), Position { vector: [0,0,0] });
+        assert_eq!(rot_x_neg.mul_pos(Position { vector: [0,1,0] }), Position { vector: [0,0,-1] });
+        assert_eq!(rot_x_neg.mul_pos(Position { vector: [0,0,1] }), Position { vector: [0,1,0] });
+        assert_eq!(rot_x_neg.mul_pos(Position { vector: [0,-1,0] }), Position { vector: [0,0,1] });
+        assert_eq!(rot_x_neg.mul_pos(Position { vector: [0,0,-1] }), Position { vector: [0,-1,0] });
+        
+
+        let rot_y = Transform::rotate_y(1);
+        assert_eq!(rot_y.mul_pos(Position { vector: [0,0,0] }), Position { vector: [0,0,0] });
+        assert_eq!(rot_y.mul_pos(Position { vector: [1,0,0] }), Position { vector: [0,0,-1] });
+        assert_eq!(rot_y.mul_pos(Position { vector: [0,0,1] }), Position { vector: [1,0,0] });
+        assert_eq!(rot_y.mul_pos(Position { vector: [-1,0,0] }), Position { vector: [0,0,1] });
+        assert_eq!(rot_y.mul_pos(Position { vector: [0,0,-1] }), Position { vector: [-1,0,0] });
     }
 }

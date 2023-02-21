@@ -6,8 +6,11 @@ fn main() {
     let file = fs::read_to_string("input.txt");
 
     if let Ok(content) = file {
-        if let Some(result) = process_with_portals(content) {
-            println!("{result}");
+        if let Some(result) = process_with_portals(content.clone(), true) {
+            println!("geometric result: {result}");
+        }
+        if let Some(result) = process_with_portals(content, false) {
+            println!("topological result: {result}");
         }
     }
 }
