@@ -202,15 +202,6 @@ impl Direction {
         }
     }
 
-    fn get_translation(&self) -> Transform {
-        match self {
-            Direction::Right => Transform::translate(2, 0, 0),
-            Direction::Down => Transform::translate(0, -2, 0),
-            Direction::Left => Transform::translate(-2, 0, 0),
-            Direction::Up => Transform::translate(0, 2, 0),
-        }
-    }
-
     fn get_rotation(&self) -> Transform {
         match self {
             Direction::Right => Transform::rotate_y(1),
@@ -230,7 +221,7 @@ impl Direction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 struct Transform {
     matrix: [[isize;4];3],
 }
@@ -246,17 +237,7 @@ impl Transform {
         }
     }
 
-    fn translate(x:isize, y:isize, z:isize) -> Self {
-        Self {
-            matrix: [
-                [1,0,0,x],
-                [0,1,0,y],
-                [0,0,1,z],
-            ],
-        }
-    }
-
-    fn mul_trans(&self, other: &Self) -> Self {
+    fn mul_trans(&self, other: Self) -> Self {
         let a = 
         self.matrix[0][0] * other.matrix[0][0]+ 
         self.matrix[0][1] * other.matrix[1][0]+ 
@@ -611,17 +592,17 @@ impl std::fmt::Display for CubeColors {
 }
 
 pub struct CubeNet {
-    node_degrees: HashMap<(usize, usize), usize>,
+    node_degrees: HashMap<(isize, isize), usize>,
     color_degrees: HashMap<CubeColors, usize>,
-    corners: BTreeMap<(usize, usize), Option<CubeColors>>,
-    edges: HashMap<(usize, usize), BTreeSet<(usize, usize)>>,
+    corners: BTreeMap<(isize, isize), Option<CubeColors>>,
+    edges: HashMap<(isize, isize), BTreeSet<(isize, isize)>>,
     unused_colors: VecDeque<CubeColors>,
 }
 
 impl CubeNet {
     fn new() -> Self {
         Self {
-            node_degrees: HashMap::<(usize, usize), usize>::new(),
+            node_degrees: HashMap::<(isize, isize), usize>::new(),
             color_degrees: HashMap::<CubeColors, usize>::new(),
             corners: BTreeMap::new(),
             edges: HashMap::new(),
@@ -653,7 +634,7 @@ impl CubeNet {
         }
     }
 
-    fn set_color(&mut self, node: (usize, usize), color: Option<CubeColors>) {
+    fn set_color(&mut self, node: (isize, isize), color: Option<CubeColors>) {
         if let Some(node_color) = self.corners.get_mut(&node) {
             if let Some(old_color) = node_color && let Some(node_degree) = self.node_degrees.get(&node){
                 *self.color_degrees.entry(*old_color).or_insert(0) += node_degree;
@@ -665,13 +646,13 @@ impl CubeNet {
         }
     }
 
-    fn set_color_same_as(&mut self, node: (usize, usize), other_node: (usize, usize)) {
+    fn set_color_same_as(&mut self, node: (isize, isize), other_node: (isize, isize)) {
         if let Some(&color) = self.corners.get(&other_node) {
             self.set_color(node, color);
         }
     }
 
-    fn add_face(&mut self, [a, b, c, d]: [(usize, usize); 4]) {
+    fn add_face(&mut self, [a, b, c, d]: [(isize, isize); 4]) {
         self.corners.insert(a, None);
         self.corners.insert(b, None);
         self.corners.insert(c, None);
@@ -698,7 +679,7 @@ impl CubeNet {
         edges_a.insert(d);
     }
 
-    fn assign_new_color(&mut self, node: (usize, usize)) {
+    fn assign_new_color(&mut self, node: (isize, isize)) {
         let color = self.unused_colors.pop_front();
         self.set_color(node, color);
     }
@@ -723,7 +704,7 @@ impl CubeNet {
         let sides_y = self.corners.keys().map(|c| c.1).max().unwrap_or(0);
         let sides_x = self.corners.keys().map(|c| c.0).max().unwrap_or(0);
         'try_extend_color: loop {
-            let mut double_uncolored_corners = HashMap::<(usize, usize), usize>::new();
+            let mut double_uncolored_corners = HashMap::<(isize, isize), usize>::new();
             for y in 0..sides_y {
                 for x in 0..sides_x {
                     let local_corners = [(x, y), (x, y + 1), (x + 1, y + 1), (x + 1, y)];
@@ -841,55 +822,88 @@ impl CubeNet {
     }
 }
 
-fn detect_portals_geometrically(puzzle: &Puzzle)  -> Option<Vec<Portal>> {
+struct Edge {
+    from: (isize, isize),
+    to: (isize, isize),
+    direction: Direction,
+}
+
+struct ExtractedFaces {
+    face_set: BTreeMap<(isize, isize), usize>,
+    edges: Vec<Edge>,
+}
+
+fn extract_faces(puzzle: &Puzzle) -> ExtractedFaces {
     let (w, h) = puzzle.dimensions_2d();
-    let side_length = num::integer::gcd(w, h);
-    let sides_x = w / side_length;
-    let sides_y = h / side_length;
-    let mut side_set = BTreeMap::<(isize, isize), usize>::new();
+    let side_length = num::integer::gcd(w, h) as isize;
+    let sides_x = w as isize / side_length;
+    let sides_y = h as isize / side_length;
+    
+    let mut face_set = BTreeMap::<(isize, isize), usize>::new();
     let mut edges = Vec::new();
 
     for y in 0..sides_y {
         for row in 0..side_length {
             for x in 0..sides_x {
                 for col in 0..side_length {
-                    let coord = (x * side_length + col, (y * side_length) + row);
+                    let coord = ((x * side_length + col) as usize, ((y * side_length) + row) as usize);
                     if !puzzle.is_void_at(coord) {
-                        let side_count = side_set.len();
-                        side_set.entry((x as isize, y as isize)).or_insert(side_count);
-                        edges.push(((x as isize, y as isize), (x as isize, y as isize + 1), Direction::Down));
-                        edges.push(((x as isize, y as isize + 1), (x as isize + 1, y as isize + 1), Direction::Right));
-                        edges.push(((x as isize + 1, y as isize + 1), (x as isize + 1, y as isize), Direction::Up));
-                        edges.push(((x as isize + 1, y as isize), (x as isize, y as isize), Direction::Left));
+                        let side_count = face_set.len();
+                        face_set.entry((x, y)).or_insert(side_count);
+                        edges.push(Edge {
+                            from: (x, y),
+                            to: (x, y + 1),
+                            direction: Direction::Down,
+                        });
+                        edges.push(Edge {
+                            from: (x, y + 1),
+                            to: (x + 1, y + 1),
+                            direction: Direction::Right,
+                        });
+                        edges.push(Edge {
+                            from: (x + 1, y + 1),
+                            to: (x + 1, y),
+                            direction: Direction::Up,
+                        });
+                        edges.push(Edge {
+                            from: (x + 1, y),
+                            to: (x, y),
+                            direction: Direction::Left,
+                        });
                     }
                 }
             }
         }
     }
+    ExtractedFaces {
+        face_set, edges
+    }
+}
+fn detect_portals_geometrically(puzzle: &Puzzle)  -> Option<Vec<Portal>> {
+    let (w, h) = puzzle.dimensions_2d();
+    let side_length = num::integer::gcd(w, h) as isize;
+    
+    let ExtractedFaces{ mut face_set, edges} = extract_faces(puzzle);
 
-    let Some((face_coord, _)) = side_set.pop_first() else {
+    let Some((face_coord, _)) = face_set.pop_first() else {
         return None;
     };
 
     let mut queue = VecDeque::new();
-    let (init_x, init_y) = face_coord;
-
-    queue.push_back((face_coord, Transform::translate(-(init_x)*2-1, -(init_y)*2-1, 0), Transform::new()));
+    queue.push_back((face_coord, Transform::new()));
     
     let mut corner_mapping = HashMap::new();
 
-    while let Some(((face_x,face_y), translation, rotation)) = queue.pop_front() {
+    while let Some(((face_x,face_y), rotation)) = queue.pop_front() {
         let corners_2d = [
-            (face_x, face_y),
-            (face_x, face_y + 1),
-            (face_x + 1, face_y + 1),
-            (face_x + 1, face_y)
+            (face_x, face_y, Position::new(-1,-1,-1)),
+            (face_x, face_y + 1, Position::new(-1,1,-1)),
+            (face_x + 1, face_y + 1, Position::new(1,1,-1)),
+            (face_x + 1, face_y, Position::new(1,-1,-1))
         ];
 
-        for (x,y) in corners_2d {
-            let c3d = Position::new(2*x,2*y,-1);
-            let pos3d = rotation.mul_pos(translation.mul_pos(c3d));
-            corner_mapping.insert((x,y), pos3d);
+        for (x,y, c3d) in corners_2d {
+            corner_mapping.insert((x,y), rotation.mul_pos(c3d));
         }
 
         for d in [
@@ -900,28 +914,28 @@ fn detect_portals_geometrically(puzzle: &Puzzle)  -> Option<Vec<Portal>> {
         ] {
             let (delta_x, delta_y) = d.get_delta();
             let next_face = (face_x + delta_x, face_y + delta_y);
-            if side_set.remove(&next_face).is_some() {
-                queue.push_back((next_face, translation.mul_trans(&d.get_translation()), rotation.mul_trans(&d.get_rotation())));
+            if face_set.remove(&next_face).is_some() {
+                queue.push_back((next_face, rotation.mul_trans(d.get_rotation())));
             }
         }
     }
     let mut portals = Vec::<_>::new();
     let mut colored_edges =
-        HashMap::<(Position, Position), (Direction, (isize, isize), (isize, isize))>::new();
+        HashMap::<(&Position, &Position), (Direction, (isize, isize), (isize, isize))>::new();
     
-    for (from, to, edge_direction) in edges {
-        let from_color = *corner_mapping.get(&from)?;
-        let to_color = *corner_mapping.get(&to)?;
-        let edge_color = (from_color, to_color);
-        let back_edge = (edge_color.1, edge_color.0);
-        if let Some((other_edge_direction, other_to, other_from)) =
+    for edge in edges {
+        let from_position = corner_mapping.get(&edge.from)?;
+        let to_position = corner_mapping.get(&edge.to)?;
+        let edge_position = (from_position, to_position);
+        let back_edge = (to_position, from_position);
+        if let Some((other_edge_direction, ref other_to, ref other_from)) =
             colored_edges.remove(&back_edge)
         {
-            if (other_to, other_from) == (to, from) {
+            if (other_to, other_from) == (&edge.to, &edge.from) {
                 continue;
             }
 
-            let entrance_direction = edge_direction.turn_cw();
+            let entrance_direction = edge.direction.turn_cw();
             let exit_direction = other_edge_direction.turn_ccw();
 
             let offset: (isize, isize) = match entrance_direction {
@@ -937,49 +951,56 @@ fn detect_portals_geometrically(puzzle: &Puzzle)  -> Option<Vec<Portal>> {
                 Direction::Left => (-1, 0),
                 Direction::Up => (0, -1),
             };
-            let start_x_sign = if from.0 > to.0 { -1 } else { 0 };
-            let start_y_sign = if from.1 > to.1 { -1 } else { 0 };
-            let end_x_sign = if to.0 > from.0 { -1 } else { 0 };
-            let end_y_sign = if to.1 > from.1 { -1 } else { 0 };
+            let (from_x, from_y) = edge.from;
+            let (to_x, to_y) = edge.to;
+            let (other_from_x, other_from_y) = other_from;
+            let (other_to_x, other_to_y) = other_to;
+            let (offset_x, offset_y) = offset;
+            let (offset_other_x, offset_other_y) = offset_other;
 
-            let other_start_x_sign = if other_from.0 > other_to.0 { -1 } else { 0 };
-            let other_start_y_sign = if other_from.1 > other_to.1 { -1 } else { 0 };
-            let other_end_x_sign = if other_to.0 > other_from.0 { -1 } else { 0 };
-            let other_end_y_sign = if other_to.1 > other_from.1 { -1 } else { 0 };
+            let start_x_sign = if from_x > to_x { -1 } else { 0 };
+            let start_y_sign = if from_y > to_y { -1 } else { 0 };
+            let end_x_sign = if to_x > from_x { -1 } else { 0 };
+            let end_y_sign = if to_y > from_y { -1 } else { 0 };
+
+            let other_start_x_sign = if other_from_x > other_to_x { -1 } else { 0 };
+            let other_start_y_sign = if other_from_y > other_to_y { -1 } else { 0 };
+            let other_end_x_sign = if other_to_x > other_from_x { -1 } else { 0 };
+            let other_end_y_sign = if other_to_y > other_from_y { -1 } else { 0 };
 
             let portal = Portal {
                 entrance_start: (
-                    (start_x_sign + from.0 * side_length as isize + offset.0) as usize,
-                    (start_y_sign + from.1 * side_length as isize + offset.1) as usize,
+                    (start_x_sign + from_x * side_length + offset_x) as usize,
+                    (start_y_sign + from_y * side_length + offset_y) as usize,
                 ),
                 entrance_end: (
-                    (end_x_sign + to.0 * side_length as isize + offset.0) as usize,
-                    (end_y_sign + to.1 * side_length as isize + offset.1) as usize,
+                    (end_x_sign + to_x * side_length + offset_x) as usize,
+                    (end_y_sign + to_y * side_length + offset_y) as usize,
                 ),
                 entrance_direction,
                 exit_start: (
                     (other_start_x_sign
-                        + other_from.0 * side_length as isize
-                        + offset_other.0) as usize,
+                        + other_from_x * side_length
+                        + offset_other_x) as usize,
                     (other_start_y_sign
-                        + other_from.1 * side_length as isize
-                        + offset_other.1) as usize,
+                        + other_from_y * side_length
+                        + offset_other_y) as usize,
                 ),
                 exit_end: (
                     (other_end_x_sign
-                        + other_to.0 * side_length as isize
-                        + offset_other.0) as usize,
+                        + other_to_x * side_length
+                        + offset_other_x) as usize,
                     (other_end_y_sign
-                        + other_to.1 * side_length as isize
-                        + offset_other.1) as usize,
+                        + other_to_y * side_length
+                        + offset_other_y) as usize,
                 ),
                 exit_direction,
             };
             portals.push(portal);
             portals.push(portal.inverse());
         } else {
-            colored_edges.insert(edge_color, (edge_direction, from, to));
-            colored_edges.insert(back_edge, (edge_direction.opposite(), to, from));
+            colored_edges.insert(edge_position, (edge.direction, edge.from, edge.to));
+            colored_edges.insert(back_edge, (edge.direction.opposite(), edge.to, edge.from));
         }
     }
     
@@ -988,28 +1009,12 @@ fn detect_portals_geometrically(puzzle: &Puzzle)  -> Option<Vec<Portal>> {
 
 fn detect_portals_topological(puzzle: &Puzzle) -> Option<Vec<Portal>> {
     let (w, h) = puzzle.dimensions_2d();
-    let side_length = num::integer::gcd(w, h);
-    let sides_x = w / side_length;
-    let sides_y = h / side_length;
-    let mut side_set = BTreeMap::<(usize, usize), usize>::new();
+    let side_length = num::integer::gcd(w, h) as isize;
     let mut net = CubeNet::new();
 
+    let ExtractedFaces {face_set, ..} = extract_faces(puzzle);
 
-    for y in 0..sides_y {
-        for row in 0..side_length {
-            for x in 0..sides_x {
-                for col in 0..side_length {
-                    let coord = (x * side_length + col, (y * side_length) + row);
-                    if !puzzle.is_void_at(coord) {
-                        let side_count = side_set.len();
-                        side_set.entry((x, y)).or_insert(side_count);
-                    }
-                }
-            }
-        }
-    }
-
-    for &(x, y) in side_set.keys() {
+    for &(x, y) in face_set.keys() {
         let a = (x, y);
         let b = (x, y + 1);
         let c = (x + 1, y + 1);
@@ -1024,8 +1029,8 @@ fn detect_portals_topological(puzzle: &Puzzle) -> Option<Vec<Portal>> {
 
     let mut portals = Vec::<_>::new();
     let mut colored_edges =
-        HashMap::<(CubeColors, CubeColors), (Direction, (usize, usize), (usize, usize))>::new();
-    for &(x, y) in side_set.keys() {
+        HashMap::<(CubeColors, CubeColors), (Direction, (isize, isize), (isize, isize))>::new();
+    for &(x, y) in face_set.keys() {
         let a = (x, y);
         let b = (x, y + 1);
         let c = (x + 1, y + 1);
@@ -1078,28 +1083,28 @@ fn detect_portals_topological(puzzle: &Puzzle) -> Option<Vec<Portal>> {
 
                 let portal = Portal {
                     entrance_start: (
-                        (start_x_sign + from.0 as isize * side_length as isize + offset.0) as usize,
-                        (start_y_sign + from.1 as isize * side_length as isize + offset.1) as usize,
+                        (start_x_sign + from.0 * side_length + offset.0) as usize,
+                        (start_y_sign + from.1 * side_length + offset.1) as usize,
                     ),
                     entrance_end: (
-                        (end_x_sign + to.0 as isize * side_length as isize + offset.0) as usize,
-                        (end_y_sign + to.1 as isize * side_length as isize + offset.1) as usize,
+                        (end_x_sign + to.0 * side_length + offset.0) as usize,
+                        (end_y_sign + to.1 * side_length + offset.1) as usize,
                     ),
                     entrance_direction,
                     exit_start: (
                         (other_start_x_sign
-                            + other_from.0 as isize * side_length as isize
+                            + other_from.0 * side_length
                             + offset_other.0) as usize,
                         (other_start_y_sign
-                            + other_from.1 as isize * side_length as isize
+                            + other_from.1 * side_length
                             + offset_other.1) as usize,
                     ),
                     exit_end: (
                         (other_end_x_sign
-                            + other_to.0 as isize * side_length as isize
+                            + other_to.0 * side_length
                             + offset_other.0) as usize,
                         (other_end_y_sign
-                            + other_to.1 as isize * side_length as isize
+                            + other_to.1 * side_length
                             + offset_other.1) as usize,
                     ),
                     exit_direction,
