@@ -117,7 +117,7 @@ fn parse_wind(x: isize, y: isize, char: char) -> Option<Blizzard> {
 }
 
 pub fn process(input: String, number_of_passes: usize) -> Option<isize> {
-    let lines = input.lines().into_iter().skip(1);
+    let lines = input.lines().skip(1);
     let height = lines.clone().count() as isize - 1;
     let width = lines.clone().map(|line| line.len() - 2).next()? as isize;
     let blizzards = lines.enumerate().flat_map(|(y, line)| {

@@ -7,7 +7,7 @@ fn main() {
 
     if let Ok(text) = file {
         if let Ok(result) = process(text, 1) {
-            print!("{result}");
+            print!("Most calories: {result}");
         }
     }
 }

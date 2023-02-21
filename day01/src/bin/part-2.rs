@@ -7,7 +7,7 @@ fn main() {
 
     if let Ok(text) = file {
         if let Ok(result) = process(text, 3) {
-            print!("{result}");
+            print!("Sum of most three calories: {result}");
         }
     }
 }

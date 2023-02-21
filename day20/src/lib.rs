@@ -15,8 +15,8 @@ struct Permutation {
 impl Permutation {
     fn new(size: usize) -> Self {
         Self {
-            original_to_now: (0..size).into_iter().collect(),
-            now_to_original: (0..size).into_iter().collect(),
+            original_to_now: (0..size).collect(),
+            now_to_original: (0..size).collect(),
         }
     }
 

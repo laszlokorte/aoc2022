@@ -32,7 +32,6 @@ fn digit_to_char(digit: i64) -> Option<char> {
 fn parse_number(input: &str) -> i64 {
     input
         .chars()
-        .into_iter()
         .rev()
         .enumerate()
         .filter_map(|(pos, c)| char_to_digit(c).map(|d| d * 5_i64.pow(pos as u32)))
@@ -61,7 +60,6 @@ fn stringify_number(number: i64) -> String {
 pub fn process(input: String) -> Option<String> {
     Some(stringify_number(dbg!(input
         .lines()
-        .into_iter()
         .map(parse_number)
         .sum())))
 }

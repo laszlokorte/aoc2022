@@ -36,11 +36,9 @@ impl Line {
         match self {
             Self::Vertical(Point { x, y: y0 }, y1) => (u32::min(*y0, *y1)..=u32::max(*y0, *y1))
                 .map(|y| Point { x: *x, y })
-                .into_iter()
                 .collect(),
             Self::Horizontal(Point { x: x0, y }, x1) => (u32::min(*x0, *x1)..=u32::max(*x0, *x1))
                 .map(|x| Point { x, y: *y })
-                .into_iter()
                 .collect(),
         }
     }
