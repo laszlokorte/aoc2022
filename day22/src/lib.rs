@@ -659,6 +659,11 @@ fn detect_portals_geometrically(puzzle: &Puzzle)  -> Option<Vec<Portal>> {
             }
         }
     }
+    
+    build_portals_from_corner_mapping(corner_mapping, edges, side_length)
+}
+
+fn build_portals_from_corner_mapping(corner_mapping: HashMap<(isize, isize), Position>, edges: Vec<Edge>, side_length: isize) -> Option<Vec<Portal>> {
     let mut portals = Vec::<_>::new();
     let mut colored_edges =
         HashMap::<(&Position, &Position), (Direction, (isize, isize), (isize, isize))>::new();
@@ -744,7 +749,7 @@ fn detect_portals_geometrically(puzzle: &Puzzle)  -> Option<Vec<Portal>> {
             colored_edges.insert(back_edge, (edge.direction.opposite(), edge.to, edge.from));
         }
     }
-    
+
     Some(portals)
 }
 
